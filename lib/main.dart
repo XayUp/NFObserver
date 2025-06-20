@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:enough_mail/enough_mail.dart';
+import 'package:myapp/settings/global.dart';
+import 'package:myapp/settings/settings_activity.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized(); // Necessário para usar await antes do runApp
+  await GlobalStettings.init(); // <- Aqui você inicializa sua classe
+
   runApp(const MyApp());
 }
 
@@ -40,11 +45,43 @@ class _MyHomePageState extends State<MyHomePage> {
   ImapClient? imapClient;
 
   Future<void> lerEmails() async {
+    if (GlobalStettings.mail == null ||
+        GlobalStettings.password == null ||
+        GlobalStettings.mail!.isEmpty ||
+        GlobalStettings.password!.isEmpty) {
+      debugPrint("Email ou senha não configurados.");
+
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text("Configuração de Email"),
+            content: const Text(
+              "Há algumas configurações pendentes. Por favor, configure-os.",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (builder) => const SettingsActivity(),
+                    ),
+                  );
+                },
+                child: const Text("OK"),
+              ),
+            ],
+          );
+        },
+      );
+
+      return;
+    }
     final client = ImapClient(isLogEnabled: true);
     List<String>? tmpMessages;
     try {
       await client.connectToServer(imapServer, imapPort, isSecure: true);
-      await client.login(emailLogin, senhaLogin);
+      await client.login(GlobalStettings.mail!, GlobalStettings.password!);
       // Listar as caixas de e-mail
       var mailBoxes = await client.listMailboxes(
         mailboxPatterns: ["*"],
@@ -68,7 +105,7 @@ class _MyHomePageState extends State<MyHomePage> {
         }
       }
 
-      mailBox = null;
+      //mailBox = null;
 
       if (mailBox != null) {
         await client.selectMailbox(mailBox);
@@ -80,7 +117,7 @@ class _MyHomePageState extends State<MyHomePage> {
       // fetch 10 most recent messages:
       final fetchResult = await client.fetchRecentMessages(
         messageCount: 10,
-        criteria: 'BODY.PEEK[]',
+        criteria: 'BODY.PEEK[TEXT]',
       );
 
       tmpMessages = [];
@@ -166,6 +203,35 @@ class _MyHomePageState extends State<MyHomePage> {
         tooltip: 'Load',
         child: const Icon(Icons.add),
       ), // This trailing comma makes auto-formatting nicer for build methods.
+      drawer: Drawer(
+        child: ListView(
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              child: Text(
+                "NF Oserver",
+                style: TextStyle(color: Colors.white, fontSize: 24),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SettingsActivity(),
+                  ),
+                );
+              },
+              child: Text(
+                'Configurações',
+                style: TextStyle(color: Colors.white, fontSize: 24),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
