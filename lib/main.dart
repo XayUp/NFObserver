@@ -5,7 +5,7 @@ import 'package:myapp/settings/settings_activity.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized(); // Necessário para usar await antes do runApp
-  await GlobalStettings.init(); // <- Aqui você inicializa sua classe
+  await GlobalSettings.init(); // <- Aqui você inicializa sua classe
 
   runApp(const MyApp());
 }
@@ -34,7 +34,8 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  List<String> listDocs = [];
+  String? _sysncInfo;
+  TextEditingController? _searchTextController;
 
   String emailLogin = "";
   String senhaLogin = "";
@@ -45,43 +46,15 @@ class _MyHomePageState extends State<MyHomePage> {
   ImapClient? imapClient;
 
   Future<void> lerEmails() async {
-    if (GlobalStettings.mail == null ||
-        GlobalStettings.password == null ||
-        GlobalStettings.mail!.isEmpty ||
-        GlobalStettings.password!.isEmpty) {
-      debugPrint("Email ou senha não configurados.");
-
-      showDialog(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: const Text("Configuração de Email"),
-            content: const Text(
-              "Há algumas configurações pendentes. Por favor, configure-os.",
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (builder) => const SettingsActivity(),
-                    ),
-                  );
-                },
-                child: const Text("OK"),
-              ),
-            ],
-          );
-        },
-      );
-
-      return;
-    }
     final client = ImapClient(isLogEnabled: true);
     List<String>? tmpMessages;
     try {
-      await client.connectToServer(imapServer, imapPort, isSecure: true);
-      await client.login(GlobalStettings.mail!, GlobalStettings.password!);
+      await client.connectToServer(
+        GlobalSettings.imapServer!,
+        GlobalSettings.imapPort,
+        isSecure: true,
+      );
+      await client.login(GlobalSettings.mail!, GlobalSettings.password!);
       // Listar as caixas de e-mail
       var mailBoxes = await client.listMailboxes(
         mailboxPatterns: ["*"],
@@ -183,6 +156,46 @@ class _MyHomePageState extends State<MyHomePage> {
     lerEmails();
   }
 
+  bool _checkEssentialMailSettings() {
+    if (SettingsActivity.getEssentialMailSettings().isNotEmpty) {
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text("Há algumas configurações a serem feitas"),
+            content: Text(
+              SettingsActivity.getEssentialMailSettings().join("\n"),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const SettingsActivity(),
+                    ),
+                  );
+                },
+                child: const Text("OK"),
+              ),
+            ],
+          );
+        },
+      );
+      return false;
+    }
+    return true;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkEssentialMailSettings();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -190,17 +203,28 @@ class _MyHomePageState extends State<MyHomePage> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
       ),
-      body: Center(
-        child: ListView.builder(
-          itemCount: listDocs.length,
-          itemBuilder: (context, index) {
-            return ListTile(title: Text(listDocs[index]), dense: true);
-          },
-        ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Text(_sysncInfo ?? "ASFASF"),
+          ),
+          ListView.builder(
+            itemCount: listDocs.length,
+            itemBuilder: (context, index) {
+              return ListTile(title: Text(listDocs[index]), dense: true);
+            },
+          ),
+        ],
       ),
+
       floatingActionButton: FloatingActionButton(
-        onPressed: _loadList,
-        tooltip: 'Load',
+        onPressed: () {
+          if (_checkEssentialMailSettings()) {
+            _loadList();
+          }
+        },
+        tooltip: 'Sicronizar',
         child: const Icon(Icons.add),
       ), // This trailing comma makes auto-formatting nicer for build methods.
       drawer: Drawer(

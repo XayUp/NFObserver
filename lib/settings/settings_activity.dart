@@ -8,6 +8,18 @@ class SettingsActivity extends StatelessWidget {
   Widget build(BuildContext context) {
     return const SettingActivityHome();
   }
+
+  static List<String> getEssentialMailSettings() {
+    return [
+      if (GlobalSettings.analyzeFilesPath?.isEmpty ?? true)
+        "Diretório dos arquivos locais não configurado.",
+      if (GlobalSettings.imapServer?.isEmpty ?? true)
+        "Servidor IMAP não configurado.",
+      if (GlobalSettings.imapPort <= 0 || GlobalSettings.imapPort >= 65536)
+        "Porta IMAP inválida.",
+      if (GlobalSettings.mail?.isEmpty ?? true) "Email não configurado.",
+    ];
+  }
 }
 
 class SettingActivityHome extends StatefulWidget {
@@ -18,6 +30,7 @@ class SettingActivityHome extends StatefulWidget {
 }
 
 class _SettingActivityState extends State<SettingActivityHome> {
+  TextEditingController? _tmpTextController;
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -43,17 +56,17 @@ class _SettingActivityState extends State<SettingActivityHome> {
                       decoration: const InputDecoration(
                         hintText: "Digite o caminho do diretório",
                       ),
-                      controller: TextEditingController(
+                      controller: _tmpTextController = TextEditingController(
                         text: GlobalSettings.analyzeFilesPath ?? "",
                       ),
                     ),
                     actions: [
                       TextButton(
-                        onPressed: () {
+                        onPressed: () => setState(() {
                           GlobalSettings.analyzeFilesPath =
-                              TextEditingController().text;
+                              _tmpTextController?.text ?? "";
                           Navigator.of(context).pop();
-                        },
+                        }),
                         child: const Text("OK"),
                       ),
                     ],
@@ -79,17 +92,60 @@ class _SettingActivityState extends State<SettingActivityHome> {
                       decoration: const InputDecoration(
                         hintText: "Digite o endereço do servidor IMAP",
                       ),
-                      controller: TextEditingController(
+                      controller: _tmpTextController = TextEditingController(
                         text: GlobalSettings.imapServer ?? "",
                       ),
                     ),
                     actions: [
                       TextButton(
-                        onPressed: () {
+                        onPressed: () => setState(() {
                           GlobalSettings.imapServer =
-                              TextEditingController().text;
+                              _tmpTextController?.text ?? "";
                           Navigator.of(context).pop();
-                        },
+                        }),
+                        child: const Text("OK"),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+          ListTile(
+            title: const Text("Porta IMAP"),
+            textColor:
+                ((GlobalSettings.imapPort > 0 &&
+                    GlobalSettings.imapPort < 65536))
+                ? null
+                : Colors.red,
+            subtitle: const Text(
+              "Define a porta IMAP do servidor para conexão",
+            ),
+            onTap: () {
+              // Ação ao tocar na opção de porta IMAP
+              showDialog(
+                context: context,
+                builder: (context) {
+                  return AlertDialog(
+                    title: const Text("Configurar porta IMAP"),
+                    content: TextField(
+                      decoration: const InputDecoration(
+                        hintText: "Digite a porta IMAP",
+                      ),
+                      controller: _tmpTextController = TextEditingController(
+                        text: GlobalSettings.imapPort.toString(),
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => setState(() {
+                          GlobalSettings.imapPort =
+                              _tmpTextController!.text.isNotEmpty
+                              ? int.tryParse(_tmpTextController!.text) ?? 0
+                              : 0;
+                          Navigator.of(context).pop();
+                        }),
                         child: const Text("OK"),
                       ),
                     ],
@@ -115,16 +171,16 @@ class _SettingActivityState extends State<SettingActivityHome> {
                       decoration: const InputDecoration(
                         hintText: "Digite seu email",
                       ),
-                      controller: TextEditingController(
+                      controller: _tmpTextController = TextEditingController(
                         text: GlobalSettings.mail ?? "",
                       ),
                     ),
                     actions: [
                       TextButton(
-                        onPressed: () {
-                          GlobalSettings.mail = TextEditingController().text;
+                        onPressed: () => setState(() {
+                          GlobalSettings.mail = _tmpTextController?.text ?? "";
                           Navigator.of(context).pop();
-                        },
+                        }),
                         child: const Text("OK"),
                       ),
                     ],
@@ -151,17 +207,18 @@ class _SettingActivityState extends State<SettingActivityHome> {
                       decoration: const InputDecoration(
                         hintText: "Digite sua senha",
                       ),
-                      controller: TextEditingController(
+                      controller: _tmpTextController = TextEditingController(
                         text: GlobalSettings.password ?? "",
                       ),
                     ),
                     actions: [
                       TextButton(
-                        onPressed: () {
+                        onPressed: () => setState(() {
+                          // Atualiza o estado para refletir a nova senha
                           GlobalSettings.password =
-                              TextEditingController().text;
+                              _tmpTextController?.text ?? "";
                           Navigator.of(context).pop();
-                        },
+                        }),
                         child: const Text("OK"),
                       ),
                     ],

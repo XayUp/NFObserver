@@ -1,3 +1,4 @@
+import 'package:flutter/rendering.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class GlobalSettings {
@@ -13,6 +14,9 @@ class GlobalSettings {
   static set imapServer(String? value) =>
       prefs?.setString('imap_server', value ?? "");
 
+  static int get imapPort => prefs?.getInt('imap_port') ?? 993; // Default port
+  static set imapPort(int value) => prefs?.setInt('imap_port', value);
+
   static String? get mail =>
       prefs?.getString('mail') ?? ""; // Default mail if not set
   static set mail(String? value) => prefs?.setString('mail', value ?? "");
@@ -25,5 +29,8 @@ class GlobalSettings {
   /// Initializes global settings or configurations.
   static Future<void> init() async {
     prefs = await SharedPreferences.getInstance();
+    if (prefs != null) {
+      debugPrint("GlobalSettings initialized with SharedPreferences.");
+    }
   }
 }
