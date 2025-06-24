@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:myapp/service/mail/mail_service.dart';
 import 'package:myapp/settings/global.dart';
+import 'package:myapp/settings/settings_activity.dart';
 import 'package:myapp/widgets/list/file_item.dart';
 import 'package:path/path.dart' as path;
 
@@ -19,11 +20,11 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'NFObserver App',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const MyHomePage(title: 'NFObserver'),
     );
   }
 }
@@ -36,19 +37,68 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class _MyHomePageState extends State<MyHomePage>
+    with SingleTickerProviderStateMixin {
   List<File> filesList = [];
   Map<String, bool> _sentStatus = {};
   bool _isLoading = false;
   final _mailService = MailService();
 
+  TabController? _tabController;
+
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
     _updateLocalFiles();
   }
 
-  Future<void> _updateLocalFiles({bool force = false}) async {
+  @override
+  void dispose() {
+    _tabController?.dispose();
+    super.dispose();
+  }
+
+  Widget _buildFileListView(List<File> files) {
+    if (_isLoading && files.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (files.isEmpty) {
+      return const Center(
+        child: Text(
+          "Nenhum arquivo encontrado",
+          style: TextStyle(fontSize: 16),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: files.length,
+      itemBuilder: (context, index) {
+        final file = files[index];
+        final isSent = _sentStatus[file.path] ?? false;
+        return FileItem(
+          file: file,
+          isSent: isSent,
+          subtitleFilter: (file) {
+            final fileName = path.basename(file.path);
+            return fileName.contains(RegExp('NF \\d*'))
+                ? "Possível Nota Fiscal"
+                : RegExp(
+                    r'^((\d{2}|\d{2}-\d{2})\.\d{2}\.\d{2})',
+                  ).hasMatch(fileName)
+                ? "Possível anotação/relatório"
+                : path
+                      .dirname(file.path)
+                      .replaceFirst(GlobalSettings.analyzeFilesPath, "");
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _updateLocalFiles() async {
     final Directory targetDir = Directory(GlobalSettings.analyzeFilesPath);
     if (targetDir.existsSync()) {
       setState(() {
@@ -109,7 +159,41 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // Calcula as listas filtradas uma vez para otimizar o desempenho.
+    final sentFiles = filesList
+        .where((file) => _sentStatus[file.path] == true)
+        .toList();
+    final unsentFiles = filesList
+        .where((file) => _sentStatus[file.path] != true)
+        .toList();
+
     return Scaffold(
+      drawer: Drawer(
+        child: ListView(
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              child: Text(
+                widget.title,
+                style: TextStyle(color: Colors.white, fontSize: 24),
+              ),
+            ),
+            ListTile(
+              title: const Text("Configurações"),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SettingsActivity(),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: _isLoading
@@ -125,37 +209,21 @@ class _MyHomePageState extends State<MyHomePage> {
                 ],
               )
             : Text(widget.title),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(text: "Todos (${filesList.length})"),
+            Tab(text: "Enviados (${sentFiles.length})"),
+            Tab(text: "Não Enviados (${unsentFiles.length})"),
+          ],
+        ),
       ),
-      body: Column(
+      body: TabBarView(
+        controller: _tabController,
         children: [
-          Expanded(
-            child: ListView.builder(
-              itemCount: filesList.length,
-              itemBuilder: (context, index) {
-                final file = filesList[index];
-                final isSent = _sentStatus[file.path] ?? false;
-                return FileItem(
-                  file: file,
-                  isSent: isSent,
-                  subtitleFilter: (file) {
-                    final fileName = path.basename(file.path);
-                    return fileName.contains(RegExp('NF \\d*'))
-                        ? "Possível Nota Fiscal"
-                        : RegExp(
-                            r'^((\d{2}|\d{2}-\d{2})\.\d{2}\.\d{2})',
-                          ).hasMatch(fileName)
-                        ? "Possível anotação/relatório"
-                        : path
-                              .dirname(file.path)
-                              .replaceFirst(
-                                GlobalSettings.analyzeFilesPath,
-                                "",
-                              );
-                  },
-                );
-              },
-            ),
-          ),
+          _buildFileListView(filesList),
+          _buildFileListView(sentFiles),
+          _buildFileListView(unsentFiles),
         ],
       ),
       floatingActionButton: Row(
@@ -163,11 +231,6 @@ class _MyHomePageState extends State<MyHomePage> {
         children: [
           FloatingActionButton(
             onPressed: _isLoading ? null : _updateLocalFiles,
-            child: Icon(Icons.refresh),
-          ),
-          FloatingActionButton(
-            onPressed: () => syncronizeFiles(),
-            mini: true,
             child: Icon(Icons.sync),
           ),
         ],

@@ -15,9 +15,13 @@ class FileItem extends StatelessWidget {
   });
 
   @override
-  // TODO: implement child
   Widget build(BuildContext context) {
     return ListTile(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      onTap: () {
+        // Ação ao tocar no item. Apenas ter um onTap já habilita o efeito de clique.
+        //debugPrint("Item tocado: ${p.basename(file.path)}");
+      },
       leading: Icon(
         isSent ? Icons.check_circle : Icons.hourglass_top_rounded,
         color: isSent ? Colors.green : Colors.orange,

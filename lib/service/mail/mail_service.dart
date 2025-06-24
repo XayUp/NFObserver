@@ -1,7 +1,6 @@
 import 'package:enough_mail/enough_mail.dart';
 import 'package:flutter/foundation.dart';
 import 'package:myapp/settings/global.dart';
-import 'package:myapp/settings/settings_activity.dart';
 
 class MailService {
   final bool _isLogEnabled;
@@ -20,7 +19,7 @@ class MailService {
 
       if (server.isEmpty || mail.isEmpty || password.isEmpty) {
         throw Exception(
-          "As seguintes configurações ainda não foram definidas: ${SettingsActivity.getEssentialMailSettings().join("\n")}",
+          "Configurações de IMAP (servidor, email ou senha) não foram definidas.",
         );
       }
 
@@ -44,21 +43,24 @@ class MailService {
   /// Retorna um `Set` para buscas de alta performance.
   Future<Set<String>> fetchAllSentAttachmentNames() async {
     return await _withConnection((client) async {
-      List<Mailbox> allMailboxes = await client.listMailboxes(
+      final allMailboxes = await client.listMailboxes(
         mailboxPatterns: ["*"],
         recursive: true,
       );
-      //Todos os MailBox do tipo "ENVIADAS" permanecerão na lista
-      allMailboxes = allMailboxes.where((mailBox) {
-        return mailBox.isSent ||
-            mailBox.encodedPath.toUpperCase().contains(RegExp("SENT|ENVIADAS"));
+
+      final sentMailboxes = allMailboxes.where((mailbox) {
+        final upperCaseName = mailbox.path.toUpperCase();
+        return mailbox.isSent ||
+            upperCaseName.contains("SENT") ||
+            upperCaseName.contains("ENVIADOS") ||
+            upperCaseName.contains("ENVIADAS");
       }).toList();
 
-      if (allMailboxes.isEmpty) return <String>{};
+      if (sentMailboxes.isEmpty) return <String>{};
 
       final allAttachmentNames = <String>{};
-      for (final mailBox in allMailboxes) {
-        await client.selectMailbox(mailBox);
+      for (final mailbox in sentMailboxes) {
+        await client.selectMailbox(mailbox);
         final fetchResult = await client.fetchMessagesByCriteria(
           '1:* (BODYSTRUCTURE)',
         );
@@ -75,20 +77,7 @@ class MailService {
           }
         }
       }
-      debugPrint(allAttachmentNames.toString());
       return allAttachmentNames;
-    });
-  }
-
-  Future<MimeMessage> fetchFullMessage(
-    int messageId,
-    String mailBoxPath,
-  ) async {
-    return await _withConnection((client) async {
-      await client.selectMailboxByPath(mailBoxPath);
-      final message = await client.fetchMessage(messageId, 'BODY.PEEK[]');
-      //Retorna a única MimeMessage solicitada
-      return message.messages.first;
     });
   }
 }
