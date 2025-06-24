@@ -37,75 +37,25 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  String? _sysncInfo;
-  TextEditingController? _searchTextController;
+  List<File> filesList = [];
+  Map<String, bool> _sentStatus = {};
+  bool _isLoading = false;
+  final _mailService = MailService();
 
-  List<String> listDocs = [];
+  @override
+  void initState() {
+    super.initState();
+    _updateLocalFiles();
+  }
 
-  ImapClient? imapClient;
-
-  Future<void> lerEmails() async {
-    final client = ImapClient(isLogEnabled: true);
-    List<String>? tmpMessages;
-    try {
-      await client.connectToServer(
-        GlobalSettings.imapServer!,
-        GlobalSettings.imapPort,
-        isSecure: true,
-      );
-      await client.login(GlobalSettings.mail!, GlobalSettings.password!);
-      // Listar as caixas de e-mail
-      var mailBoxes = await client.listMailboxes(
-        mailboxPatterns: ["*"],
-        recursive: true,
-      );
-      // Suggested code may be subject to a license. Learn more: ~LicenseLog:1963415062.
-      Mailbox? mailBox;
-      for (var tmpMailBox in mailBoxes) {
-        //if (kDebugMode) {
-        debugPrint("On loop ${tmpMailBox.name}");
-        debugPrint(tmpMailBox.encodedPath);
-        debugPrint(
-          "Is SEND?: ${tmpMailBox.encodedPath.toUpperCase().contains(RegExp("SENT|ENVIADAS"))}",
-        );
-        //}
-        if (tmpMailBox.encodedPath.toUpperCase().contains(
-          RegExp("SENT|ENVIADAS"),
-        )) {
-          mailBox = tmpMailBox;
-          break;
-        }
-      }
-
-      //mailBox = null;
-
-      if (mailBox != null) {
-        await client.selectMailbox(mailBox);
-        listDocs.add("MailBox: ${mailBox.name}");
-      } else {
-        listDocs.add("MailBox: ${(await client.selectInbox()).name}");
-      }
-
-      // fetch 10 most recent messages:
-      final fetchResult = await client.fetchRecentMessages(
-        messageCount: 10,
-        criteria: 'BODY.PEEK[TEXT]',
-      );
-
-      tmpMessages = [];
-
-      for (final message in fetchResult.messages) {
-        String? text = printMessage(message);
-        if (text != null) {
-          tmpMessages.add("###### INÍCIO ######\n$text\n######   FIM  ######");
-        }
-      }
-    } catch (e) {
-      debugPrint(e.toString());
-    } finally {
+  Future<void> _updateLocalFiles({bool force = false}) async {
+    final Directory targetDir = Directory(GlobalSettings.analyzeFilesPath);
+    if (targetDir.existsSync()) {
       setState(() {
         _isLoading = true;
-        _sentStatus.clear();
+        _sentStatus.clear(); // Limpa o status anterior antes de recarregar
+
+        // Lista os arquivos e já os ordena pelo nome do arquivo (A-Z)
         final files = targetDir
             .listSync(recursive: true)
             .whereType<File>()
@@ -119,6 +69,14 @@ class _MyHomePageState extends State<MyHomePage> {
         filesList = files;
       });
       await _checkFilesSentStatus();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "Diretório de análise não encontrado: ${GlobalSettings.analyzeFilesPath}",
+          ),
+        ),
+      );
     }
   }
 
@@ -129,9 +87,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
       final newStatus = <String, bool>{};
       for (final file in filesList) {
-        newStatus[file.path] = sentAttachmentNames.contains(
-          path.basename(file.path).toLowerCase(),
-        );
+        final localFileName = path.basename(file.path).toLowerCase();
+        newStatus[file.path] = sentAttachmentNames.contains(localFileName);
       }
 
       setState(() {
@@ -164,6 +121,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     child: CircularProgressIndicator(),
                   ),
                   SizedBox(width: 16),
+                  Text("Sincronizando..."),
                 ],
               )
             : Text(widget.title),
@@ -181,19 +139,18 @@ class _MyHomePageState extends State<MyHomePage> {
                   isSent: isSent,
                   subtitleFilter: (file) {
                     final fileName = path.basename(file.path);
-                    final relativePath = path
-                        .dirname(file.path)
-                        .replaceFirst(GlobalSettings.analyzeFilesPath, "");
-                    var finalSubtitle = fileName.contains(RegExp('NF \\d*'))
+                    return fileName.contains(RegExp('NF \\d*'))
                         ? "Possível Nota Fiscal"
                         : RegExp(
                             r'^((\d{2}|\d{2}-\d{2})\.\d{2}\.\d{2})',
                           ).hasMatch(fileName)
                         ? "Possível anotação/relatório"
-                        : "";
-                    if (finalSubtitle.isNotEmpty) finalSubtitle += "\n";
-                    finalSubtitle += 'Diretório: $relativePath';
-                    return finalSubtitle;
+                        : path
+                              .dirname(file.path)
+                              .replaceFirst(
+                                GlobalSettings.analyzeFilesPath,
+                                "",
+                              );
                   },
                 );
               },
