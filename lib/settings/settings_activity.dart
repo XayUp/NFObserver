@@ -11,13 +11,12 @@ class SettingsActivity extends StatelessWidget {
 
   static List<String> getEssentialMailSettings() {
     return [
-      if (GlobalSettings.analyzeFilesPath?.isEmpty ?? true)
+      if (GlobalSettings.analyzeFilesPath.isEmpty)
         "Diretório dos arquivos locais não configurado.",
-      if (GlobalSettings.imapServer?.isEmpty ?? true)
-        "Servidor IMAP não configurado.",
+      if (GlobalSettings.imapServer.isEmpty) "Servidor IMAP não configurado.",
       if (GlobalSettings.imapPort <= 0 || GlobalSettings.imapPort >= 65536)
         "Porta IMAP inválida.",
-      if (GlobalSettings.mail?.isEmpty ?? true) "Email não configurado.",
+      if (GlobalSettings.mail.isEmpty) "Email não configurado.",
     ];
   }
 }
@@ -39,7 +38,7 @@ class _SettingActivityState extends State<SettingActivityHome> {
         children: [
           ListTile(
             title: const Text("Diretório dos arquivos locais"),
-            textColor: GlobalSettings.analyzeFilesPath?.isNotEmpty ?? true
+            textColor: GlobalSettings.analyzeFilesPath.isNotEmpty
                 ? null
                 : Colors.red, // Cor do texto baseado no estado
             subtitle: const Text(
@@ -57,7 +56,7 @@ class _SettingActivityState extends State<SettingActivityHome> {
                         hintText: "Digite o caminho do diretório",
                       ),
                       controller: _tmpTextController = TextEditingController(
-                        text: GlobalSettings.analyzeFilesPath ?? "",
+                        text: GlobalSettings.analyzeFilesPath,
                       ),
                     ),
                     actions: [
@@ -77,7 +76,7 @@ class _SettingActivityState extends State<SettingActivityHome> {
           ),
           ListTile(
             title: const Text("Servidor IMAP"),
-            textColor: (GlobalSettings.imapServer?.isNotEmpty ?? false)
+            textColor: (GlobalSettings.imapServer.isNotEmpty)
                 ? null
                 : Colors.red,
             subtitle: const Text("Define o servidor IMAP para conexão"),
@@ -93,14 +92,13 @@ class _SettingActivityState extends State<SettingActivityHome> {
                         hintText: "Digite o endereço do servidor IMAP",
                       ),
                       controller: _tmpTextController = TextEditingController(
-                        text: GlobalSettings.imapServer ?? "",
+                        text: GlobalSettings.imapServer,
                       ),
                     ),
                     actions: [
                       TextButton(
                         onPressed: () => setState(() {
-                          GlobalSettings.imapServer =
-                              _tmpTextController?.text ?? "";
+                          GlobalSettings.imapServer = _tmpTextController?.text;
                           Navigator.of(context).pop();
                         }),
                         child: const Text("OK"),
@@ -156,9 +154,7 @@ class _SettingActivityState extends State<SettingActivityHome> {
           ),
           ListTile(
             title: const Text("Email"),
-            textColor: GlobalSettings.mail?.isNotEmpty ?? false
-                ? null
-                : Colors.red,
+            textColor: GlobalSettings.mail.isNotEmpty ? null : Colors.red,
             subtitle: const Text("Define o email do login"),
             onTap: () {
               // Ação ao tocar na opção de email
@@ -172,7 +168,7 @@ class _SettingActivityState extends State<SettingActivityHome> {
                         hintText: "Digite seu email",
                       ),
                       controller: _tmpTextController = TextEditingController(
-                        text: GlobalSettings.mail ?? "",
+                        text: GlobalSettings.mail,
                       ),
                     ),
                     actions: [
@@ -191,9 +187,7 @@ class _SettingActivityState extends State<SettingActivityHome> {
           ),
           ListTile(
             title: const Text("Senha"),
-            textColor: GlobalSettings.password?.isNotEmpty ?? false
-                ? null
-                : Colors.red,
+            textColor: GlobalSettings.password.isNotEmpty ? null : Colors.red,
             subtitle: const Text("Define a senha do login"),
             onTap: () {
               // Ação ao tocar na opção de senha
@@ -208,7 +202,7 @@ class _SettingActivityState extends State<SettingActivityHome> {
                         hintText: "Digite sua senha",
                       ),
                       controller: _tmpTextController = TextEditingController(
-                        text: GlobalSettings.password ?? "",
+                        text: GlobalSettings.password,
                       ),
                     ),
                     actions: [

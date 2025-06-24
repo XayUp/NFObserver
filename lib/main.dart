@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:enough_mail/enough_mail.dart';
+import 'package:myapp/service/mail/mail_service.dart';
 import 'package:myapp/settings/global.dart';
-import 'package:myapp/settings/settings_activity.dart';
+import 'package:myapp/widgets/list/file_item.dart';
+import 'package:path/path.dart' as path;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized(); // Necessário para usar await antes do runApp
@@ -37,11 +40,7 @@ class _MyHomePageState extends State<MyHomePage> {
   String? _sysncInfo;
   TextEditingController? _searchTextController;
 
-  String emailLogin = "";
-  String senhaLogin = "";
-
-  String imapServer = "";
-  int imapPort = 0;
+  List<String> listDocs = [];
 
   ImapClient? imapClient;
 
@@ -105,156 +104,116 @@ class _MyHomePageState extends State<MyHomePage> {
       debugPrint(e.toString());
     } finally {
       setState(() {
-        if (tmpMessages == null) {
-          listDocs.clear();
-        } else {
-          listDocs = tmpMessages;
-        }
+        _isLoading = true;
+        _sentStatus.clear();
+        final files = targetDir
+            .listSync(recursive: true)
+            .whereType<File>()
+            .toList();
+        files.sort(
+          (a, b) => path
+              .basename(a.path)
+              .toLowerCase()
+              .compareTo(path.basename(b.path).toLowerCase()),
+        );
+        filesList = files;
       });
-      if (client.isConnected) client.logout();
+      await _checkFilesSentStatus();
     }
   }
 
-  String? printMessage(MimeMessage message) {
-    String text = "";
-    //'\nfrom: ${message.from} with subject "${message.decodeSubject()}"';
-    /*if (!message.isTextPlainMessage()) {
-      text += '\ncontent-type: ${message.mediaType}';
-      //text += 'Message: ${message.decodeContentText()}';
-    } else {
-      final plainText = message.decodeTextPlainPart();
-      if (plainText != null) {
-        final lines = plainText.split('\r\n');
-        for (final line in lines) {
-          if (line.startsWith('>')) {
-            // break when quoted text starts
-            break;
-          }
-          text += "\n$line";
-        }
+  Future<void> _checkFilesSentStatus() async {
+    try {
+      final sentAttachmentNames = await _mailService
+          .fetchAllSentAttachmentNames();
+
+      final newStatus = <String, bool>{};
+      for (final file in filesList) {
+        newStatus[file.path] = sentAttachmentNames.contains(
+          path.basename(file.path).toLowerCase(),
+        );
       }
-    }*/
-    final parts = message.allPartsFlat;
 
-    final attachments = parts.where((part) => part.decodeFileName() != null);
-
-    if (attachments.isNotEmpty) {
-      text += "\n📎 Anexos:";
-      for (final attachment in attachments) {
-        final filename = attachment.decodeFileName() ?? "sem_nome.ext";
-        text += "\n - $filename";
+      setState(() {
+        _sentStatus = newStatus;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Erro ao sincronizar: $e")));
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
-      return text;
     }
-    return null;
   }
 
-  void searchMessage(String text) {}
-
-  void _loadList() {
-    listDocs.clear();
-    lerEmails();
-  }
-
-  bool _checkEssentialMailSettings() {
-    if (SettingsActivity.getEssentialMailSettings().isNotEmpty) {
-      showDialog(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: const Text("Há algumas configurações a serem feitas"),
-            content: Text(
-              SettingsActivity.getEssentialMailSettings().join("\n"),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const SettingsActivity(),
-                    ),
-                  );
-                },
-                child: const Text("OK"),
-              ),
-            ],
-          );
-        },
-      );
-      return false;
-    }
-    return true;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkEssentialMailSettings();
-    });
-  }
+  void syncronizeFiles() {}
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
+        title: _isLoading
+            ? const Row(
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(),
+                  ),
+                  SizedBox(width: 16),
+                ],
+              )
+            : Text(widget.title),
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Text(_sysncInfo ?? "ASFASF"),
-          ),
-          ListView.builder(
-            itemCount: listDocs.length,
-            itemBuilder: (context, index) {
-              return ListTile(title: Text(listDocs[index]), dense: true);
-            },
+          Expanded(
+            child: ListView.builder(
+              itemCount: filesList.length,
+              itemBuilder: (context, index) {
+                final file = filesList[index];
+                final isSent = _sentStatus[file.path] ?? false;
+                return FileItem(
+                  file: file,
+                  isSent: isSent,
+                  subtitleFilter: (file) {
+                    final fileName = path.basename(file.path);
+                    final relativePath = path
+                        .dirname(file.path)
+                        .replaceFirst(GlobalSettings.analyzeFilesPath, "");
+                    var finalSubtitle = fileName.contains(RegExp('NF \\d*'))
+                        ? "Possível Nota Fiscal"
+                        : RegExp(
+                            r'^((\d{2}|\d{2}-\d{2})\.\d{2}\.\d{2})',
+                          ).hasMatch(fileName)
+                        ? "Possível anotação/relatório"
+                        : "";
+                    if (finalSubtitle.isNotEmpty) finalSubtitle += "\n";
+                    finalSubtitle += 'Diretório: $relativePath';
+                    return finalSubtitle;
+                  },
+                );
+              },
+            ),
           ),
         ],
       ),
-
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          if (_checkEssentialMailSettings()) {
-            _loadList();
-          }
-        },
-        tooltip: 'Sicronizar',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
-      drawer: Drawer(
-        child: ListView(
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              child: Text(
-                "NF Oserver",
-                style: TextStyle(color: Colors.white, fontSize: 24),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const SettingsActivity(),
-                  ),
-                );
-              },
-              child: Text(
-                'Configurações',
-                style: TextStyle(color: Colors.white, fontSize: 24),
-              ),
-            ),
-          ],
-        ),
+      floatingActionButton: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            onPressed: _isLoading ? null : _updateLocalFiles,
+            child: Icon(Icons.refresh),
+          ),
+          FloatingActionButton(
+            onPressed: () => syncronizeFiles(),
+            mini: true,
+            child: Icon(Icons.sync),
+          ),
+        ],
       ),
     );
   }
