@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:myapp/settings/global.dart';
+import 'package:myapp/utils/theme_notifier.dart';
+import 'package:provider/provider.dart';
 
 class SettingsActivity extends StatelessWidget {
   const SettingsActivity({super.key});
@@ -32,10 +34,49 @@ class _SettingActivityState extends State<SettingActivityHome> {
   TextEditingController? _tmpTextController;
   @override
   Widget build(BuildContext context) {
+    final themeNotifier = Provider.of<ThemeNotifier>(context);
+
     return Scaffold(
       appBar: AppBar(title: const Text("Configurações")),
       body: ListView(
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              'Aparência',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
+          RadioListTile<ThemeMode>(
+            title: const Text('Padrão do Sistema'),
+            value: ThemeMode.system,
+            groupValue: themeNotifier.themeMode,
+            onChanged: (value) => themeNotifier.setThemeMode(value!),
+          ),
+          RadioListTile<ThemeMode>(
+            title: const Text('Claro'),
+            value: ThemeMode.light,
+            groupValue: themeNotifier.themeMode,
+            onChanged: (value) => themeNotifier.setThemeMode(value!),
+          ),
+          RadioListTile<ThemeMode>(
+            title: const Text('Escuro'),
+            value: ThemeMode.dark,
+            groupValue: themeNotifier.themeMode,
+            onChanged: (value) => themeNotifier.setThemeMode(value!),
+          ),
+          const Divider(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              'Sincronização',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
           ListTile(
             title: const Text("Diretório dos arquivos locais"),
             textColor: GlobalSettings.analyzeFilesPath.isNotEmpty

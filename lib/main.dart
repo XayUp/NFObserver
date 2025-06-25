@@ -1,64 +1,147 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:myapp/service/mail/mail_service.dart';
 import 'package:myapp/settings/global.dart';
 import 'package:myapp/settings/settings_activity.dart';
+import 'package:myapp/utils/theme_notifier.dart';
 import 'package:myapp/widgets/list/file_item.dart';
 import 'package:path/path.dart' as path;
+import 'package:provider/provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized(); // Necessário para usar await antes do runApp
   await GlobalSettings.init(); // <- Aqui você inicializa sua classe
 
-  runApp(const MyApp());
+  // Carrega o tema salvo antes de iniciar o app
+  final initialThemeMode = ThemeMode.values[GlobalSettings.themeMode];
+
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => ThemeNotifier(initialThemeMode),
+      child: const NFObserverApp(),
+    ),
+  );
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class NFObserverApp extends StatelessWidget {
+  const NFObserverApp({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final themeNotifier = Provider.of<ThemeNotifier>(context);
+
     return MaterialApp(
       title: 'NFObserver App',
+      debugShowCheckedModeBanner: kDebugMode,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: Colors.grey.shade100,
+
+        colorScheme: ColorScheme.light(
+          primary: Colors.blue.shade800,
+          secondary: Colors.teal.shade400,
+          surface: Colors.white,
+          onPrimary: Colors.white,
+          onSecondary: Colors.white,
+          onSurface: Colors.black,
+          error: Colors.red.shade700,
+          onError: Colors.white,
+        ),
+        appBarTheme: AppBarTheme(
+          backgroundColor: Colors.blue.shade800,
+          foregroundColor: Colors.white, // Cor para título e ícones
+        ),
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          backgroundColor: Colors.teal.shade400,
+          foregroundColor: Colors.white,
+        ),
       ),
-      home: const MyHomePage(title: 'NFObserver'),
+      // Tema para o modo escuro
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF121212),
+        colorScheme: ColorScheme.dark(
+          primary: Colors.blue.shade300,
+          secondary: Colors.teal.shade200,
+          surface: const Color(0xFF1E1E1E),
+        ),
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          backgroundColor: Colors.teal.shade200,
+          foregroundColor: Colors.black,
+        ),
+      ),
+      themeMode: themeNotifier.themeMode,
+      home: const NFObserverPage(title: 'NFObserver'),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+class NFObserverPage extends StatefulWidget {
+  const NFObserverPage({super.key, required this.title});
 
   final String title;
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<NFObserverPage> createState() => _NFObserverPageState();
 }
 
-class _MyHomePageState extends State<MyHomePage>
-    with SingleTickerProviderStateMixin {
+class _NFObserverPageState extends State<NFObserverPage>
+    with TickerProviderStateMixin {
+  //Arquivos e sincronização
   List<File> filesList = [];
   Map<String, bool> _sentStatus = {};
   bool _isLoading = false;
+
   final _mailService = MailService();
 
+  //Pesquisa
+  bool _isSearching = false;
+  bool _hasTypedInSearch = false;
+  final _searchController = TextEditingController();
+
+  //Filtragem
   TabController? _tabController;
+
+  //Animação do FloatingButton
+  late AnimationController _fabAnimationController;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _updateLocalFiles();
+
+    _fabAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+
+    _searchController.addListener(() {
+      if (mounted) {
+        if (_searchController.text.isNotEmpty) {
+          _hasTypedInSearch = true;
+          setState(() {});
+        } else {
+          if (_hasTypedInSearch) {
+            _toggleSearch();
+          }
+        }
+      }
+    });
   }
 
   @override
   void dispose() {
     _tabController?.dispose();
+    _searchController.dispose();
+    _fabAnimationController.dispose();
     super.dispose();
   }
 
+  //Criação de Widgets
   Widget _buildFileListView(List<File> files) {
     if (_isLoading && files.isEmpty) {
       return const Center(child: CircularProgressIndicator());
@@ -98,6 +181,70 @@ class _MyHomePageState extends State<MyHomePage>
     );
   }
 
+  void _toggleFabMenu() {
+    if (_fabAnimationController.isDismissed) {
+      _fabAnimationController.forward();
+    } else {
+      _fabAnimationController.reverse();
+    }
+  }
+
+  Widget _buildFloatintActionButton() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ScaleTransition(
+          scale: _fabAnimationController,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: FloatingActionButton.small(
+              heroTag: "settings_fab",
+              tooltip: 'Configurações',
+              onPressed: () {
+                _toggleFabMenu();
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SettingsActivity(),
+                  ),
+                );
+              },
+              child: const Icon(Icons.settings),
+            ),
+          ),
+        ),
+        ScaleTransition(
+          scale: _fabAnimationController,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: FloatingActionButton.small(
+              heroTag: "sync_fab",
+              tooltip: 'Sincronizar',
+              onPressed: () {
+                _toggleFabMenu();
+                if (!_isLoading) _updateLocalFiles();
+              },
+              child: const Icon(Icons.sync),
+            ),
+          ),
+        ),
+        FloatingActionButton(
+          heroTag: "main_fab",
+          onPressed: _toggleFabMenu,
+          child: RotationTransition(
+            turns: Tween(
+              begin: 0.0,
+              end: 0.375,
+            ).animate(_fabAnimationController),
+            child: const Icon(Icons.add),
+          ),
+        ),
+      ],
+    );
+  }
+
+  //Atualização da lista de arquivos e sincronização com IMAP
   Future<void> _updateLocalFiles() async {
     final Directory targetDir = Directory(GlobalSettings.analyzeFilesPath);
     if (targetDir.existsSync()) {
@@ -155,10 +302,22 @@ class _MyHomePageState extends State<MyHomePage>
     }
   }
 
-  void syncronizeFiles() {}
+  //Alternador no estado de pesquisa
+  void _toggleSearch() {
+    setState(() {
+      _isSearching = !_isSearching;
+      if (!_isSearching) {
+        _hasTypedInSearch = false;
+        _searchController.clear();
+        FocusScope.of(context).unfocus();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final searchQuery = _searchController.text.toLowerCase();
+
     // Calcula as listas filtradas uma vez para otimizar o desempenho.
     final sentFiles = filesList
         .where((file) => _sentStatus[file.path] == true)
@@ -167,74 +326,67 @@ class _MyHomePageState extends State<MyHomePage>
         .where((file) => _sentStatus[file.path] != true)
         .toList();
 
+    final geralFiles = filesList.where((file) {
+      return !_isSearching
+          ? true
+          : path.basename(file.path).toLowerCase().contains(searchQuery);
+    }).toList();
+
     return Scaffold(
-      drawer: Drawer(
-        child: ListView(
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              child: Text(
-                widget.title,
-                style: TextStyle(color: Colors.white, fontSize: 24),
-              ),
-            ),
-            ListTile(
-              title: const Text("Configurações"),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const SettingsActivity(),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: _isLoading
-            ? const Row(
+        title: _isSearching
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Pesquisar...',
+                  border: InputBorder.none,
+                  hintStyle: TextStyle(color: Colors.white70),
+                ),
+                style: const TextStyle(color: Colors.white, fontSize: 18),
+              )
+            : _isLoading
+            ? Row(
                 children: [
                   SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(),
+                    child: CircularProgressIndicator(
+                      color: Theme.of(context).colorScheme.onPrimary,
+                    ),
                   ),
                   SizedBox(width: 16),
                   Text("Sincronizando..."),
                 ],
               )
             : Text(widget.title),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: [
-            Tab(text: "Todos (${filesList.length})"),
-            Tab(text: "Enviados (${sentFiles.length})"),
-            Tab(text: "Não Enviados (${unsentFiles.length})"),
-          ],
-        ),
+        actions: [
+          IconButton(
+            onPressed: _toggleSearch,
+            icon: Icon(_isSearching ? Icons.close : Icons.search),
+          ),
+        ],
+        bottom: _isSearching
+            ? Tab(text: "Resultados da pesquisa: ${geralFiles.length}")
+            : TabBar(
+                controller: _tabController,
+                tabs: [
+                  Tab(text: "Todos (${geralFiles.length})"),
+                  Tab(text: "Enviados (${sentFiles.length})"),
+                  Tab(text: "Não Enviados (${unsentFiles.length})"),
+                ],
+              ),
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildFileListView(filesList),
+          _buildFileListView(geralFiles),
           _buildFileListView(sentFiles),
           _buildFileListView(unsentFiles),
         ],
       ),
-      floatingActionButton: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          FloatingActionButton(
-            onPressed: _isLoading ? null : _updateLocalFiles,
-            child: Icon(Icons.sync),
-          ),
-        ],
-      ),
+      floatingActionButton: _buildFloatintActionButton(),
     );
   }
 }

@@ -16,21 +16,26 @@ class FileItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      onTap: () {
-        // Ação ao tocar no item. Apenas ter um onTap já habilita o efeito de clique.
-        //debugPrint("Item tocado: ${p.basename(file.path)}");
-      },
-      leading: Icon(
-        isSent ? Icons.check_circle : Icons.hourglass_top_rounded,
-        color: isSent ? Colors.green : Colors.orange,
-      ),
-      title: Text(p.basename(file.path)),
-      subtitle: Text(
-        subtitleFilter?.call(file) ?? p.dirname(file.path),
-        overflow: TextOverflow.ellipsis,
-        maxLines: 2,
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      elevation: 0.5,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+      child: ListTile(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        onTap: () {
+          // Ação ao tocar no item. Apenas ter um onTap já habilita o efeito de clique.
+          //debugPrint("Item tocado: ${p.basename(file.path)}");
+        },
+        leading: Icon(
+          isSent ? Icons.check_circle : Icons.hourglass_top_rounded,
+          color: isSent ? Colors.green : Colors.orange,
+        ),
+        title: Text(p.basename(file.path)),
+        subtitle: Text(
+          subtitleFilter?.call(file) ?? p.dirname(file.path),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 2,
+        ),
       ),
     );
   }

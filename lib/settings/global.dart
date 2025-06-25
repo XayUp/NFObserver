@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -25,6 +26,10 @@ class GlobalSettings {
       prefs?.getString('password') ?? ""; // Default password if not set
   static set password(String? value) =>
       prefs?.setString('password', value ?? "");
+
+  static int get themeMode =>
+      prefs?.getInt('themeMode') ?? ThemeMode.system.index;
+  static set themeMode(int value) => prefs?.setInt('themeMode', value);
 
   /// Initializes global settings or configurations.
   static Future<void> init() async {
