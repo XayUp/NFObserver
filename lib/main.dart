@@ -45,7 +45,7 @@ class NFObserverApp extends StatelessWidget {
           secondary: Colors.teal.shade400,
           surface: Colors.white,
           onPrimary: Colors.white,
-          onSecondary: Colors.white,
+          onSecondary: const Color.fromARGB(210, 255, 255, 255),
           onSurface: Colors.black,
           error: Colors.red.shade700,
           onError: Colors.white,
@@ -57,6 +57,10 @@ class NFObserverApp extends StatelessWidget {
         floatingActionButtonTheme: FloatingActionButtonThemeData(
           backgroundColor: Colors.teal.shade400,
           foregroundColor: Colors.white,
+        ),
+        tabBarTheme: TabBarThemeData(
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white54,
         ),
       ),
       // Tema para o modo escuro
@@ -332,9 +336,12 @@ class _NFObserverPageState extends State<NFObserverPage>
           : path.basename(file.path).toLowerCase().contains(searchQuery);
     }).toList();
 
+    if (_isSearching) {
+      _tabController?.index = 0;
+    }
+
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: _isSearching
             ? TextField(
                 controller: _searchController,
@@ -351,6 +358,7 @@ class _NFObserverPageState extends State<NFObserverPage>
                 children: [
                   SizedBox(
                     width: 20,
+
                     height: 20,
                     child: CircularProgressIndicator(
                       color: Theme.of(context).colorScheme.onPrimary,
@@ -368,7 +376,14 @@ class _NFObserverPageState extends State<NFObserverPage>
           ),
         ],
         bottom: _isSearching
-            ? Tab(text: "Resultados da pesquisa: ${geralFiles.length}")
+            ? Tab(
+                child: Text(
+                  "Resultados da pesquisa: ${geralFiles.length}",
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSecondary,
+                  ),
+                ),
+              )
             : TabBar(
                 controller: _tabController,
                 tabs: [

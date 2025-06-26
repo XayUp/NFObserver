@@ -61,6 +61,8 @@ class MailService {
       final allAttachmentNames = <String>{};
       for (final mailbox in sentMailboxes) {
         await client.selectMailbox(mailbox);
+        if (mailbox.messagesExists < 1) continue;
+
         final fetchResult = await client.fetchMessagesByCriteria(
           '1:* (BODYSTRUCTURE)',
         );

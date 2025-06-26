@@ -32,6 +32,13 @@ class SettingActivityHome extends StatefulWidget {
 
 class _SettingActivityState extends State<SettingActivityHome> {
   TextEditingController? _tmpTextController;
+
+  @override
+  void dispose() {
+    _tmpTextController?.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeNotifier = Provider.of<ThemeNotifier>(context);
@@ -49,25 +56,50 @@ class _SettingActivityState extends State<SettingActivityHome> {
               ),
             ),
           ),
-          RadioListTile<ThemeMode>(
-            title: const Text('Padrão do Sistema'),
-            value: ThemeMode.system,
-            groupValue: themeNotifier.themeMode,
-            onChanged: (value) => themeNotifier.setThemeMode(value!),
+          ListTile(
+            title: const Text("Tema"),
+            onTap: () => showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: Text("Alterne entre os temas"),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RadioListTile<ThemeMode>(
+                      title: const Text('Padrão do Sistema'),
+                      value: ThemeMode.system,
+                      groupValue: themeNotifier.themeMode,
+                      onChanged: (value) => {
+                        themeNotifier.setThemeMode(value!),
+                        Navigator.of(context).pop(),
+                      },
+                    ),
+                    RadioListTile<ThemeMode>(
+                      title: const Text('Claro'),
+                      value: ThemeMode.light,
+                      groupValue: themeNotifier.themeMode,
+                      onChanged: (value) => {
+                        themeNotifier.setThemeMode(value!),
+                        Navigator.of(context).pop(),
+                      },
+                    ),
+                    RadioListTile<ThemeMode>(
+                      title: const Text('Escuro'),
+                      value: ThemeMode.dark,
+                      groupValue: themeNotifier.themeMode,
+                      onChanged: (value) => {
+                        themeNotifier.setThemeMode(value!),
+                        Navigator.of(context).pop(),
+                      },
+                    ),
+                  ],
+                ),
+                actions: [],
+              ),
+            ),
           ),
-          RadioListTile<ThemeMode>(
-            title: const Text('Claro'),
-            value: ThemeMode.light,
-            groupValue: themeNotifier.themeMode,
-            onChanged: (value) => themeNotifier.setThemeMode(value!),
-          ),
-          RadioListTile<ThemeMode>(
-            title: const Text('Escuro'),
-            value: ThemeMode.dark,
-            groupValue: themeNotifier.themeMode,
-            onChanged: (value) => themeNotifier.setThemeMode(value!),
-          ),
-          const Divider(),
+
+          const Divider(height: 1),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Text(
@@ -139,7 +171,9 @@ class _SettingActivityState extends State<SettingActivityHome> {
                     actions: [
                       TextButton(
                         onPressed: () => setState(() {
-                          GlobalSettings.imapServer = _tmpTextController?.text;
+                          GlobalSettings.imapServer =
+                              _tmpTextController?.text ??
+                              ""; // Garante atribuição não-nula
                           Navigator.of(context).pop();
                         }),
                         child: const Text("OK"),
