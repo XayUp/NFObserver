@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:myapp/service/mail/mail_service.dart';
 import 'package:myapp/settings/global.dart';
 import 'package:myapp/settings/settings_activity.dart';
+import 'package:myapp/utils/filter_parser.dart';
 import 'package:myapp/utils/theme_notifier.dart';
 import 'package:myapp/widgets/list/file_item.dart';
 import 'package:path/path.dart' as path;
@@ -15,7 +16,8 @@ Future<void> main() async {
   await GlobalSettings.init(); // <- Aqui você inicializa sua classe
 
   // Carrega o tema salvo antes de iniciar o app
-  final initialThemeMode = ThemeMode.values[GlobalSettings.themeMode];
+  final initialThemeMode =
+      ThemeMode.values[await ThemeNotifier.getThemeIndex()];
 
   runApp(
     ChangeNotifierProvider(
@@ -94,6 +96,13 @@ class NFObserverPage extends StatefulWidget {
 
 class _NFObserverPageState extends State<NFObserverPage>
     with TickerProviderStateMixin {
+  //Tipos de arquivos
+  final _tagPossibleFiscalNoteType = "Possível Nota Fiscal";
+  final _tagPossibleReportType = "Possível Rolatório/Anotação";
+  final _tagPossibleBonus = "Possível Bonificação";
+  final _tagPossiblePaid = "Possivel Nota Paga";
+  final _tagUnknow = "Desconhecido";
+
   //Arquivos e sincronização
   List<File> filesList = [];
   Map<String, bool> _sentStatus = {};
@@ -160,27 +169,73 @@ class _NFObserverPageState extends State<NFObserverPage>
       );
     }
 
+    Set<List<String>> filtersForIcon = {};
+    for (var filter in GlobalSettings.docTypeFilters) {
+      final convertedFilter = FilterParser.parseFilter(filter);
+      if (convertedFilter.isNotEmpty) {
+        filtersForIcon.add(convertedFilter);
+      }
+      debugPrint(convertedFilter.toString());
+    }
+
     return ListView.builder(
       itemCount: files.length,
       itemBuilder: (context, index) {
-        final file = files[index];
-        final isSent = _sentStatus[file.path] ?? false;
-        return FileItem(
-          file: file,
-          isSent: isSent,
-          subtitleFilter: (file) {
-            final fileName = path.basename(file.path);
-            return fileName.contains(RegExp('NF \\d*'))
-                ? "Possível Nota Fiscal"
-                : RegExp(
-                    r'^((\d{2}|\d{2}-\d{2})\.\d{2}\.\d{2})',
-                  ).hasMatch(fileName)
-                ? "Possível anotação/relatório"
-                : path
-                      .dirname(file.path)
-                      .replaceFirst(GlobalSettings.analyzeFilesPath, "");
-          },
-        );
+        final title = path.basename(files[index].path);
+        final bool isSent = _sentStatus[files[index].path] ?? false;
+        String? subtitle;
+        Icon icon = Icon(Icons.insert_drive_file, color: Colors.amberAccent);
+        for (var filter in filtersForIcon) {
+          final fileType = filter[0].toUpperCase();
+          final operationType = filter[1].toUpperCase();
+          final occurrence = filter[2];
+
+          bool match = false;
+          switch (operationType) {
+            case "CONTAINS":
+              match = title.toUpperCase().contains(occurrence.toUpperCase());
+              break;
+            case "REGEX":
+              try {
+                match = RegExp(
+                  occurrence,
+                  caseSensitive: false,
+                ).hasMatch(title);
+              } catch (e) {
+                debugPrint("Invalid regex in filter: '$occurrence'. Error: $e");
+              }
+              break;
+          }
+          if (match) {
+            switch (fileType) {
+              case "FISCAL_NOTE":
+                icon = Icon(
+                  Icons.receipt_long_outlined,
+                  color: isSent ? Colors.greenAccent : Colors.red,
+                );
+                subtitle = _tagPossibleFiscalNoteType;
+                break;
+              case "REPORT":
+                icon = Icon(Icons.note_alt_outlined);
+                subtitle = _tagPossibleReportType;
+                break;
+              case "BONUS":
+                icon = Icon(
+                  Icons.monetization_on_outlined,
+                  color: Colors.yellowAccent,
+                );
+                subtitle = _tagPossibleBonus;
+                break;
+              case "PAID":
+                icon = Icon(Icons.payment_outlined, color: Colors.green);
+                subtitle = _tagPossiblePaid;
+                break;
+            }
+            break;
+          }
+        }
+
+        return FileItem(title: title, subtitle: subtitle, icon: icon);
       },
     );
   }
@@ -296,9 +351,11 @@ class _NFObserverPageState extends State<NFObserverPage>
         _sentStatus = newStatus;
       });
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Erro ao sincronizar: $e")));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Erro ao sincronizar: $e")));
+      }
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -393,14 +450,24 @@ class _NFObserverPageState extends State<NFObserverPage>
                 ],
               ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildFileListView(geralFiles),
-          _buildFileListView(sentFiles),
-          _buildFileListView(unsentFiles),
-        ],
-      ),
+      body: _isLoading
+          ? const Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  Text("Conectando ao servidor IMAP"),
+                ],
+              ),
+            )
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                _buildFileListView(geralFiles),
+                _buildFileListView(sentFiles),
+                _buildFileListView(unsentFiles),
+              ],
+            ),
       floatingActionButton: _buildFloatintActionButton(),
     );
   }

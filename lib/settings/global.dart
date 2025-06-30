@@ -27,9 +27,24 @@ class GlobalSettings {
   static set password(String? value) =>
       prefs?.setString('password', value ?? "");
 
-  static int get themeMode =>
-      prefs?.getInt('themeMode') ?? ThemeMode.system.index;
-  static set themeMode(int value) => prefs?.setInt('themeMode', value);
+  //Uma Lista com filtros
+  //Formatado e JSON:
+  //{
+  //  "FILE_TYPE": "<NOME_DO_TIPO>",
+  //  "OPERATOR_TYPE" : "<TIPO_OPERAÇÂO>",
+  //  "OCCURRENCE" : "<OCORRÊNCIA>"
+  //}
+  // FILE_TYPE: Irá receber o nome do tipo de arquivo suportado pelo filtro. Os tipos estarão na classe
+  static List<String> get docTypeFilters =>
+      prefs?.getStringList("doc_type_filters") ??
+      [
+        '{"FILE_TYPE": "BONUS", "OPERATOR_TYPE": "CONTAINS", "OCCURRENCE": "BONIFICAÇÃO"}',
+        r'{"FILE_TYPE": "FISCAL_NOTE", "OPERATOR_TYPE": "REGEX", "OCCURRENCE": "(NF \\d*|\\s-\\s\\d+)"}',
+        r'{"FILE_TYPE": "REPORT", "OPERATOR_TYPE": "REGEX", "OCCURRENCE": "^((\\d{2}|\\d{2}-\\d{2})(,\\d{2})*.\\d{2}.\\d{2})"}',
+        r'{"FILE_TYPE": "PAID", "OPERATOR_TYPE": "REGEX", "OCCURRENCE": "(((À|a|A|à)\\s(VISTA|vista))|(paid|PAID))" }',
+      ];
+  static set docTypeFilters(List<String> value) =>
+      prefs?.setStringList("doc_type_filters", value);
 
   /// Initializes global settings or configurations.
   static Future<void> init() async {

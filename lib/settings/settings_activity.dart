@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:myapp/settings/global.dart';
+import 'package:myapp/utils/filter_parser.dart';
 import 'package:myapp/utils/theme_notifier.dart';
 import 'package:provider/provider.dart';
 
@@ -98,7 +99,276 @@ class _SettingActivityState extends State<SettingActivityHome> {
               ),
             ),
           ),
+          ListTile(
+            title: const Text("Filtro para ícones de arquivos"),
+            subtitle: const Text(
+              "Filtro para definir os ícones na lista pelo tipo do arquivo com base no nome",
+            ),
+            onTap: () {
+              final valorController = TextEditingController();
+              showDialog(
+                context: context,
+                builder: (context) {
+                  OperationType? operationType;
+                  FileType? fileType;
 
+                  bool editFilter = false;
+                  bool newFilter = false;
+
+                  List<List<String>> filters = GlobalSettings.docTypeFilters
+                      .map((filterStr) => FilterParser.parseFilter(filterStr))
+                      .where((filter) => filter.isNotEmpty)
+                      .toList();
+
+                  //O filtro para edição
+                  List<String>? filterToEdit;
+
+                  return StatefulBuilder(
+                    builder: (BuildContext context, StateSetter stateSetter) {
+                      return AlertDialog(
+                        title: Text(
+                          editFilter
+                              ? "Editar Filtro"
+                              : "Edite ou adicione filtros",
+                        ),
+                        content: !editFilter
+                            ? Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  SizedBox(
+                                    width: 500,
+                                    height: 200,
+                                    child: ListView.builder(
+                                      itemCount: filters.length,
+                                      itemBuilder: (context, index) {
+                                        return ListTile(
+                                          title: Text(filters[index][0]),
+                                          subtitle: Text(filters[index][2]),
+                                          onTap: () => stateSetter(() {
+                                            filterToEdit = filters[index];
+                                            editFilter = true;
+                                            valorController.text =
+                                                filterToEdit![2];
+
+                                            for (var tmpFileType
+                                                in FileType.values) {
+                                              if (filterToEdit![0]
+                                                      .toLowerCase() ==
+                                                  tmpFileType.name
+                                                      .toLowerCase()) {
+                                                fileType = tmpFileType;
+                                                break;
+                                              }
+                                            }
+                                            for (var tmpOperatorType
+                                                in OperationType.values) {
+                                              if (filterToEdit![1]
+                                                      .toLowerCase() ==
+                                                  tmpOperatorType.name
+                                                      .toLowerCase()) {
+                                                operationType = tmpOperatorType;
+                                                break;
+                                              }
+                                            }
+                                            operationType ??=
+                                                OperationType.contains;
+                                            fileType ??= FileType.unknow;
+                                          }),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Row(
+                                    children: OperationType.values
+                                        .map(
+                                          (currentOperationType) => Expanded(
+                                            child: RadioListTile<OperationType>(
+                                              title: Text(
+                                                currentOperationType.name
+                                                    .toUpperCase(),
+                                              ),
+                                              value: currentOperationType,
+                                              groupValue: operationType,
+                                              onChanged: (value) => stateSetter(
+                                                () => operationType = value!,
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                        .toList(),
+                                  ),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: valorController,
+                                          decoration: InputDecoration(
+                                            //hintText: "Valor",
+                                            labelText: "Valor",
+                                            border: OutlineInputBorder(),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Column(
+                                    children: [
+                                      for (
+                                        var i = 0;
+                                        i < FileType.values.length;
+                                        i += 2
+                                      )
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: RadioListTile<FileType>(
+                                                title: Text(
+                                                  FileType.values[i].name
+                                                      .replaceAll("_", " ")
+                                                      .toUpperCase(),
+                                                ),
+                                                value: FileType.values[i],
+                                                groupValue: fileType,
+                                                onChanged: (value) =>
+                                                    stateSetter(
+                                                      () => fileType = value!,
+                                                    ),
+                                                dense: true,
+                                                contentPadding: EdgeInsets.zero,
+                                              ),
+                                            ),
+                                            if (i + 1 < FileType.values.length)
+                                              Expanded(
+                                                child: RadioListTile<FileType>(
+                                                  title: Text(
+                                                    FileType.values[i + 1].name
+                                                        .replaceAll("_", " ")
+                                                        .toUpperCase(),
+                                                  ),
+                                                  value: FileType.values[i + 1],
+                                                  groupValue: fileType,
+                                                  onChanged: (value) =>
+                                                      stateSetter(
+                                                        () => fileType = value!,
+                                                      ),
+                                                  dense: true,
+                                                  contentPadding:
+                                                      EdgeInsets.zero,
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                        actions: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              if (!newFilter)
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      TextButton(
+                                        onPressed: () {
+                                          stateSetter(() {
+                                            if (editFilter && !newFilter) {
+                                              filters.remove(filterToEdit);
+                                              valorController.text = "";
+                                              filterToEdit = null;
+                                              operationType = null;
+                                              fileType = null;
+                                              editFilter = false;
+                                              newFilter = false;
+                                            } else {
+                                              filterToEdit = [
+                                                (fileType = FileType.unknow)
+                                                    .name
+                                                    .toUpperCase(),
+                                                (operationType =
+                                                        OperationType.contains)
+                                                    .name
+                                                    .toUpperCase(),
+                                                valorController.text = "",
+                                              ];
+                                              editFilter = true;
+                                              newFilter = true;
+                                            }
+                                          });
+                                        },
+                                        child: Text(
+                                          editFilter && !newFilter
+                                              ? "Remover"
+                                              : "Adicionar",
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              TextButton(
+                                onPressed: () => stateSetter(() {
+                                  //Gravar informação
+                                  if (editFilter) {
+                                    filterToEdit![0] = fileType!.name
+                                        .toUpperCase();
+                                    filterToEdit![1] = operationType!.name
+                                        .toUpperCase();
+                                    filterToEdit![2] = valorController.text;
+
+                                    if (newFilter) {
+                                      filters.add(filterToEdit!);
+                                      newFilter = false;
+                                    }
+
+                                    filterToEdit = null;
+                                    //Atualiza o estado
+                                    editFilter = !editFilter;
+                                  } else {
+                                    //Converter em um mapa JSON compatível e salvar em SharedPreferences
+                                    GlobalSettings.docTypeFilters = filters
+                                        .map(
+                                          (filter) =>
+                                              FilterParser.serializeFilter(
+                                                filter,
+                                              ),
+                                        )
+                                        .toList();
+                                    debugPrint(
+                                      GlobalSettings.docTypeFilters.toString(),
+                                    );
+                                    Navigator.pop(context);
+                                  }
+                                }),
+                                child: Text("Gravar"),
+                              ),
+                              TextButton(
+                                onPressed: () => stateSetter(() {
+                                  if (editFilter) {
+                                    editFilter = !editFilter;
+                                  } else {
+                                    Navigator.pop(context);
+                                  }
+                                }),
+                                child: Text("Cancelar"),
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ).then((_) {
+                valorController.dispose();
+              });
+            },
+          ),
           const Divider(height: 1),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -296,6 +566,17 @@ class _SettingActivityState extends State<SettingActivityHome> {
               );
             },
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              'Arquivos',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
+
+          const Divider(height: 1),
         ],
       ),
     );
