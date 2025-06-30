@@ -1,16 +1,25 @@
-# myapp
+# NFObserver
+Um aplicativo escrito em Dart+Flutter para gerenciamento de notas fiscais.
 
-A new Flutter project.
+## Motivo
+A demanda de notas fiscais na loja variam. As vezes podem vir muitas ou poucas. Conforma a demanda era grande, algumas notas passavam batido, causando algumas divergência com os pagamentos dos boleto.
 
-## Getting Started
+## Propósito
+Este aplicatio tem o objetivo de ajudar a controlar essas divergência, cruzando informações que no final irá nos mostrar se a nota está, em questão de repasse, finalizada.
 
-This project is a starting point for a Flutter application.
+## Recursos
+A lista de alguns recursos que já estão implementadas ou que ainda serão estão abaixo:
+- [ ] Filtro por data
+  - Permite mostrar os arquivos entre uma data inicial e uma data final
+- [ ] Leitura de informações pelo XML da nota.
+  - Ajuda a verificar algumas informações para cruzar com o nomes dos arquivos em PDF da nota.
+- [x] Sincronização dos arquivos locais com o servidor IMAP.
+  - Verificar se a nota fiscal já foi enviada ao email do financeiro.
+- [ ] Edição de parametros para icones automaticos de acordo com regras por arquivos.
+  - Customizar os icones por critério (Geralmente por conteudo no nome do arquivos).
 
-A few resources to get you started if this is your first Flutter project:
+>Outros recursos serão planejada e acrescentada à esta lista
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+### Observações
+O aplicativo foi inteiramente desenvolvido para funcionar com um propósito específico e em um ambiente específico, embora há e haverá alguns recursos flexiveis que podem ser adaptados para funcionar em quaisquer ambientes que trabalham com gerenciamento de notas fiscais (Escanear a nota fiscal, salvar o arquivo PDF com o nome do fornecedor e o número da NF).
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
