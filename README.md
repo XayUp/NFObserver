@@ -15,7 +15,7 @@ A lista de alguns recursos que já estão implementadas ou que ainda serão est�
   - Ajuda a verificar algumas informações para cruzar com o nomes dos arquivos em PDF da nota.
 - [x] Sincronização dos arquivos locais com o servidor IMAP.
   - Verificar se a nota fiscal já foi enviada ao email do financeiro.
-- [ ] Edição de parametros para icones automaticos de acordo com regras por arquivos.
+- [X] Edição de parametros para icones automaticos de acordo com regras por arquivos.
   - Customizar os icones por critério (Geralmente por conteudo no nome do arquivos).
 
 >Outros recursos serão planejada e acrescentada à esta lista
