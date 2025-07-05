@@ -3,8 +3,12 @@
 
 include: package:flutter_lints/flutter.yaml
 
-# A seção a seguir configura o formatador do Dart.
-dart_format:
-  # Define o comprimento da linha para 120 caracteres.
-  # O padrão é 80.
-  line_length: 120
+linter:
+  rules:
+    lines_longer_than_80_chars: false
+
+formatter:  
+  page_width: 120
+  trailing_commas: preserve
+
+

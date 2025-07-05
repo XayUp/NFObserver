@@ -1,15 +1,13 @@
 import 'package:enough_mail/enough_mail.dart';
 import 'package:flutter/foundation.dart';
-import 'package:myapp/settings/global.dart';
+import 'package:nfobserver/features/settings/variables/global.dart';
 
 class MailService {
   final bool _isLogEnabled;
 
   MailService({bool isLogEnabled = kDebugMode}) : _isLogEnabled = isLogEnabled;
 
-  Future<T> _withConnection<T>(
-    Future<T> Function(ImapClient client) action,
-  ) async {
+  Future<T> _withConnection<T>(Future<T> Function(ImapClient client) action) async {
     final client = ImapClient(isLogEnabled: _isLogEnabled);
     try {
       final mail = GlobalSettings.mail;
@@ -18,9 +16,7 @@ class MailService {
       final port = GlobalSettings.imapPort;
 
       if (server.isEmpty || mail.isEmpty || password.isEmpty) {
-        throw Exception(
-          "Configurações de IMAP (servidor, email ou senha) não foram definidas.",
-        );
+        throw Exception("Configurações de IMAP (servidor, email ou senha) não foram definidas.");
       }
 
       await client.connectToServer(server, port, isSecure: true);
@@ -43,10 +39,7 @@ class MailService {
   /// Retorna um `Set` para buscas de alta performance.
   Future<Set<String>> fetchAllSentAttachmentNames() async {
     return await _withConnection((client) async {
-      final allMailboxes = await client.listMailboxes(
-        mailboxPatterns: ["*"],
-        recursive: true,
-      );
+      final allMailboxes = await client.listMailboxes(mailboxPatterns: ["*"], recursive: true);
 
       final sentMailboxes = allMailboxes.where((mailbox) {
         final upperCaseName = mailbox.path.toUpperCase();
@@ -63,15 +56,11 @@ class MailService {
         await client.selectMailbox(mailbox);
         if (mailbox.messagesExists < 1) continue;
 
-        final fetchResult = await client.fetchMessagesByCriteria(
-          '1:* (BODYSTRUCTURE)',
-        );
+        final fetchResult = await client.fetchMessagesByCriteria('1:* (BODYSTRUCTURE)');
 
         for (final message in fetchResult.messages) {
           if (message.hasAttachments()) {
-            for (final contentInfo in message.findContentInfo(
-              disposition: ContentDisposition.attachment,
-            )) {
+            for (final contentInfo in message.findContentInfo(disposition: ContentDisposition.attachment)) {
               if (contentInfo.fileName != null) {
                 allAttachmentNames.add(contentInfo.fileName!.toLowerCase());
               }
