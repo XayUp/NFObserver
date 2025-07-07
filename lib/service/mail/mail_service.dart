@@ -23,7 +23,7 @@ class MailService {
       await client.login(mail, password);
       return await action(client);
     } catch (e) {
-      debugPrint("Ocorreu um erro ao tentar se conectar: $e");
+      //debugPrint("Ocorreu um erro ao tentar se conectar: $e");
       rethrow;
     } finally {
       if (client.isConnected) {

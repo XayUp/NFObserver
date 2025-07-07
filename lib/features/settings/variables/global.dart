@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 class GlobalSettings {
@@ -23,6 +23,32 @@ class GlobalSettings {
   static String get xmlPath => prefs?.getString('xml_path') ?? ""; // Default path if not set
   static set xmlPath(String? value) => prefs?.setString('xml_path', value ?? "");
 
+  static Map<String, List<String>> get docNameFormats {
+    final jsonString = prefs?.getString('doc_name_formats');
+    if (jsonString == null || jsonString.isEmpty) {
+      // Default format for fiscal notes
+      return {
+        'FISCAL_NOTE': ['<DATA> - <NOME_FORNECEDOR> - NF <NUMERO_NF>', '<DATA> - <NOME_FORNECEDOR> - <NUMERO_NF>'],
+      };
+    }
+    try {
+      // Decodes the JSON string back into a map.
+      final decodedMap = json.decode(jsonString) as Map<String, dynamic>;
+      // We need to ensure the values are List<String>
+      return decodedMap.map((key, value) {
+        if (value is List) {
+          return MapEntry(key, List<String>.from(value));
+        }
+        return MapEntry(key, <String>[]); // Return empty list for malformed entries
+      });
+    } catch (e) {
+      return {}; // Return empty map on error
+    }
+  }
+
+  static Future<void> setDocNameFormats(Map<String, List<String>> value) async =>
+      await prefs?.setString('doc_name_formats', json.encode(value));
+
   //Uma Lista com filtros
   //Formatado e JSON:
   //{
@@ -44,8 +70,5 @@ class GlobalSettings {
   /// Initializes global settings or configurations.
   static Future<void> init() async {
     prefs = await SharedPreferences.getInstance();
-    if (prefs != null) {
-      debugPrint("GlobalSettings initialized with SharedPreferences.");
-    }
   }
 }

@@ -25,7 +25,6 @@ class FilterParser {
   //  OCCURRENCE : "<OCORRÊNCIA>"
   //}
   static List<String> parseFilter(String filter) {
-    debugPrint("parseFilter: $filter");
     try {
       Map<String, dynamic> filterMap = json.decode(filter);
       final String fileType = filterMap["FILE_TYPE"];
@@ -55,12 +54,10 @@ class FilterParser {
   }
 
   static String serializeFilter(List<String> filter) {
-    debugPrint(filter.toString());
     final Map<String, String> filterMap = {
       'FILE_TYPE': filter[0].toUpperCase(),
       'OPERATOR_TYPE': filter[1].toUpperCase(),
-      'OCCURRENCE':
-          filter[2], // Passe a string diretamente, sem tratamento especial.
+      'OCCURRENCE': filter[2], // Passe a string diretamente, sem tratamento especial.
     };
     return jsonEncode(filterMap);
   }

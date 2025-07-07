@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nfobserver/features/app_routers.dart';
 import 'package:nfobserver/features/settings/variables/global.dart';
 import 'package:nfobserver/utils/filter_parser.dart';
 import 'package:nfobserver/utils/theme_notifier.dart';
@@ -505,6 +506,15 @@ class _SettingActivityState extends State<SettingActivityHome> {
           ),
 
           const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.rule_folder_outlined),
+            title: const Text('Gerenciar Formatos de Nomes'),
+            subtitle: const Text('Defina como o app extrai dados dos nomes dos arquivos.'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.pushNamed(context, AppRouters.formatSettings);
+            },
+          ),
         ],
       ),
     );

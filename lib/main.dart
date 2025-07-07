@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:nfobserver/features/app_routers.dart';
+import 'package:nfobserver/features/home/provider/nf_provider.dart';
 import 'package:nfobserver/features/settings/variables/global.dart';
 import 'package:nfobserver/utils/theme_notifier.dart';
 import 'package:provider/provider.dart';
@@ -12,7 +13,15 @@ Future<void> main() async {
   // Carrega o tema salvo antes de iniciar o app
   final initialThemeMode = ThemeMode.values[await ThemeNotifier.getThemeIndex()];
 
-  runApp(ChangeNotifierProvider(create: (_) => ThemeNotifier(initialThemeMode), child: const NFObserverApp()));
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ThemeNotifier(initialThemeMode)),
+        ChangeNotifierProvider(create: (_) => NFProvider()),
+      ],
+      child: const NFObserverApp(),
+    ),
+  );
 }
 
 class NFObserverApp extends StatelessWidget {

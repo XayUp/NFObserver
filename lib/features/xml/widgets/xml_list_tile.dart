@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:nfobserver/xml/nf_xml.dart';
+import 'package:nfobserver/models/xml/nf_xml.dart';
 
 class XMLListTile extends StatelessWidget {
   final NFXML nfXML;

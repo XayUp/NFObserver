@@ -1,13 +1,10 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:nfobserver/features/app_routers.dart';
-import 'package:nfobserver/features/settings/variables/global.dart';
+import 'package:nfobserver/features/home/provider/nf_provider.dart';
+import 'package:nfobserver/models/consolidated_nf.dart';
+import 'package:nfobserver/features/home/widgets/nf_list_tile.dart';
 import 'package:nfobserver/features/settings/view/settings_activity.dart';
-import 'package:nfobserver/service/mail/mail_service.dart';
-import 'package:nfobserver/utils/filter_parser.dart';
-import 'package:nfobserver/widgets/list/file_item.dart';
-import 'package:path/path.dart' as path;
+import 'package:provider/provider.dart';
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -19,22 +16,8 @@ class Home extends StatefulWidget {
 class _HomeState extends State<Home> with TickerProviderStateMixin {
   final _appTitle = "NF Observer";
 
-  //Tipos de arquivos
-  final _tagPossibleFiscalNoteType = "Possível Nota Fiscal";
-  final _tagPossibleReportType = "Possível Rolatório/Anotação";
-  final _tagPossibleBonus = "Possível Bonificação";
-  final _tagPossiblePaid = "Possivel Nota Paga";
-
-  //Arquivos e sincronização
-  List<File> filesList = [];
-  Map<String, bool> _sentStatus = {};
-  bool _isLoading = false;
-
-  final _mailService = MailService();
-
   //Pesquisa
   bool _isSearching = false;
-  bool _hasTypedInSearch = false;
   final _searchController = TextEditingController();
 
   //Filtragem
@@ -47,21 +30,19 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _updateLocalFiles();
-
     _fabAnimationController = AnimationController(vsync: this, duration: const Duration(milliseconds: 200));
 
-    _searchController.addListener(() {
-      if (mounted) {
-        if (_searchController.text.isNotEmpty) {
-          _hasTypedInSearch = true;
-          setState(() {});
-        } else {
-          if (_hasTypedInSearch) {
-            _toggleSearch();
-          }
-        }
+    // Inicia o carregamento dos dados consolidados assim que a tela é construída.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = context.read<NFProvider>();
+      if (provider.consolidatedList.isEmpty && !provider.isLoading) {
+        provider.loadAndConsolidateData();
       }
+    });
+
+    // Adiciona um listener para reconstruir a tela ao digitar na busca.
+    _searchController.addListener(() {
+      setState(() {});
     });
   }
 
@@ -73,78 +54,6 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  //Criação de Widgets
-  Widget _buildFileListView(List<File> files) {
-    if (_isLoading && files.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (files.isEmpty) {
-      return const Center(child: Text("Nenhum arquivo encontrado", style: TextStyle(fontSize: 16)));
-    }
-
-    Set<List<String>> filtersForIcon = {};
-    for (var filter in GlobalSettings.docTypeFilters) {
-      final convertedFilter = FilterParser.parseFilter(filter);
-      if (convertedFilter.isNotEmpty) {
-        filtersForIcon.add(convertedFilter);
-      }
-      debugPrint(convertedFilter.toString());
-    }
-
-    return ListView.builder(
-      itemCount: files.length,
-      itemBuilder: (context, index) {
-        final title = path.basename(files[index].path);
-        final bool isSent = _sentStatus[files[index].path] ?? false;
-        String? subtitle;
-        Icon icon = Icon(Icons.insert_drive_file, color: Colors.amberAccent);
-        for (var filter in filtersForIcon) {
-          final fileType = filter[0].toUpperCase();
-          final operationType = filter[1].toUpperCase();
-          final occurrence = filter[2];
-
-          bool match = false;
-          switch (operationType) {
-            case "CONTAINS":
-              match = title.toUpperCase().contains(occurrence.toUpperCase());
-              break;
-            case "REGEX":
-              try {
-                match = RegExp(occurrence, caseSensitive: false).hasMatch(title);
-              } catch (e) {
-                debugPrint("Invalid regex in filter: '$occurrence'. Error: $e");
-              }
-              break;
-          }
-          if (match) {
-            switch (fileType) {
-              case "FISCAL_NOTE":
-                icon = Icon(Icons.receipt_long_outlined, color: isSent ? Colors.greenAccent : Colors.red);
-                subtitle = _tagPossibleFiscalNoteType;
-                break;
-              case "REPORT":
-                icon = Icon(Icons.note_alt_outlined);
-                subtitle = _tagPossibleReportType;
-                break;
-              case "BONUS":
-                icon = Icon(Icons.monetization_on_outlined, color: Colors.yellowAccent);
-                subtitle = _tagPossibleBonus;
-                break;
-              case "PAID":
-                icon = Icon(Icons.payment_outlined, color: Colors.green);
-                subtitle = _tagPossiblePaid;
-                break;
-            }
-            break;
-          }
-        }
-
-        return FileItem(title: title, subtitle: subtitle, icon: icon);
-      },
-    );
-  }
-
   void _toggleFabMenu() {
     if (_fabAnimationController.isDismissed) {
       _fabAnimationController.forward();
@@ -153,41 +62,37 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
     }
   }
 
-  Widget _buildFloatintActionButton() {
+  Widget _buildFloatingActionButton() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: [
         ScaleTransition(
           scale: _fabAnimationController,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: FloatingActionButton.small(
-              heroTag: "settings_fab",
-              tooltip: 'Configurações',
-              onPressed: () {
-                _toggleFabMenu();
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsActivity()));
-              },
-              child: const Icon(Icons.settings),
-            ),
+          child: FloatingActionButton.small(
+            heroTag: "settings_fab",
+            tooltip: 'Configurações',
+            onPressed: () {
+              _toggleFabMenu();
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsActivity()));
+            },
+            child: const Icon(Icons.settings),
           ),
         ),
+        const SizedBox(height: 16),
         ScaleTransition(
           scale: _fabAnimationController,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: FloatingActionButton.small(
-              heroTag: "sync_fab",
-              tooltip: 'Sincronizar',
-              onPressed: () {
-                _toggleFabMenu();
-                if (!_isLoading) _updateLocalFiles();
-              },
-              child: const Icon(Icons.sync),
-            ),
+          child: FloatingActionButton.small(
+            heroTag: "sync_fab",
+            tooltip: 'Atualizar',
+            onPressed: () {
+              _toggleFabMenu();
+              context.read<NFProvider>().loadAndConsolidateData();
+            },
+            child: const Icon(Icons.sync),
           ),
         ),
+        const SizedBox(height: 16),
         FloatingActionButton(
           heroTag: "main_fab",
           onPressed: _toggleFabMenu,
@@ -200,57 +105,10 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
     );
   }
 
-  //Atualização da lista de arquivos e sincronização com IMAP
-  Future<void> _updateLocalFiles() async {
-    final Directory targetDir = Directory(GlobalSettings.analyzeFilesPath);
-    if (targetDir.existsSync()) {
-      setState(() {
-        _isLoading = true;
-        _sentStatus.clear(); // Limpa o status anterior antes de recarregar
-
-        // Lista os arquivos e já os ordena pelo nome do arquivo (A-Z)
-        final files = targetDir.listSync(recursive: true).whereType<File>().toList();
-        files.sort((a, b) => path.basename(a.path).toLowerCase().compareTo(path.basename(b.path).toLowerCase()));
-        filesList = files;
-      });
-      await _checkFilesSentStatus();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Diretório de análise não encontrado: ${GlobalSettings.analyzeFilesPath}")),
-      );
-    }
-  }
-
-  Future<void> _checkFilesSentStatus() async {
-    try {
-      final sentAttachmentNames = await _mailService.fetchAllSentAttachmentNames();
-
-      final newStatus = <String, bool>{};
-      for (final file in filesList) {
-        final localFileName = path.basename(file.path).toLowerCase();
-        newStatus[file.path] = sentAttachmentNames.contains(localFileName);
-      }
-
-      setState(() {
-        _sentStatus = newStatus;
-      });
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao sincronizar: $e")));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  //Alternador no estado de pesquisa
   void _toggleSearch() {
     setState(() {
       _isSearching = !_isSearching;
       if (!_isSearching) {
-        _hasTypedInSearch = false;
         _searchController.clear();
         FocusScope.of(context).unfocus();
       }
@@ -260,23 +118,22 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
   Widget _buildDrawer() {
     return Drawer(
       child: ListView(
+        padding: EdgeInsets.zero,
         children: [
           DrawerHeader(
             decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary),
-            child: Text("data"),
-          ),
-          SingleChildScrollView(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: Icon(Icons.code),
-                  title: Text("XMLs"),
-                  onTap: () {
-                    Navigator.pushNamed(context, AppRouters.xmls);
-                  },
-                ),
-              ],
+            child: Text(
+              _appTitle,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.white),
             ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.description_outlined),
+            title: const Text("XMLs (Visão Antiga)"),
+            onTap: () {
+              Navigator.pop(context); // Fecha o drawer
+              Navigator.pushNamed(context, AppRouters.xmls);
+            },
           ),
         ],
       ),
@@ -285,19 +142,23 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final nfProvider = context.watch<NFProvider>();
     final searchQuery = _searchController.text.toLowerCase();
 
-    // Calcula as listas filtradas uma vez para otimizar o desempenho.
-    final sentFiles = filesList.where((file) => _sentStatus[file.path] == true).toList();
-    final unsentFiles = filesList.where((file) => _sentStatus[file.path] != true).toList();
+    // Filtra a lista principal com base na pesquisa.
+    final searchFilteredList = nfProvider.consolidatedList.where((nf) {
+      if (!_isSearching || searchQuery.isEmpty) return true;
 
-    final geralFiles = filesList.where((file) {
-      return !_isSearching ? true : path.basename(file.path).toLowerCase().contains(searchQuery);
+      final docName = nf.docData.name?.toLowerCase() ?? '';
+      final supplier = nf.xmlData?.emitName.toLowerCase() ?? '';
+      final nfNumber = nf.xmlData?.nfNumber.toString() ?? '';
+
+      return docName.contains(searchQuery) || supplier.contains(searchQuery) || nfNumber.contains(searchQuery);
     }).toList();
 
-    if (_isSearching) {
-      _tabController?.index = 0;
-    }
+    // Cria as listas para cada aba a partir da lista já filtrada pela pesquisa.
+    final sentFiles = searchFilteredList.where((nf) => nf.isSent).toList();
+    final unsentFiles = searchFilteredList.where((nf) => !nf.isSent).toList();
 
     return Scaffold(
       drawer: _buildDrawer(),
@@ -313,53 +174,109 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
                 ),
                 style: const TextStyle(color: Colors.white, fontSize: 18),
               )
-            : _isLoading
-            ? Row(
-                children: [
-                  SizedBox(
-                    width: 20,
-
-                    height: 20,
-                    child: CircularProgressIndicator(color: Theme.of(context).colorScheme.onPrimary),
-                  ),
-                  SizedBox(width: 16),
-                  Text("Sincronizando..."),
-                ],
+            : nfProvider.isEnriching
+            ? Text(
+                nfProvider.statusMessage,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.white70),
               )
             : Text(_appTitle),
-        actions: [IconButton(onPressed: _toggleSearch, icon: Icon(_isSearching ? Icons.close : Icons.search))],
-        bottom: _isSearching
-            ? Tab(
-                child: Text(
-                  "Resultados da pesquisa: ${geralFiles.length}",
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSecondary),
+        actions: [
+          IconButton(
+            onPressed: _toggleSearch,
+            icon: Icon(_isSearching ? Icons.close : Icons.search),
+          ),
+        ],
+        bottom: PreferredSize(
+          preferredSize: Size.fromHeight(nfProvider.isEnriching ? 52.0 : 48.0),
+          child: Column(
+            children: [
+              if (nfProvider.isEnriching)
+                const LinearProgressIndicator(
+                  minHeight: 4,
+                  backgroundColor: Colors.transparent,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
                 ),
-              )
-            : TabBar(
-                controller: _tabController,
-                tabs: [
-                  Tab(text: "Todos (${geralFiles.length})"),
-                  Tab(text: "Enviados (${sentFiles.length})"),
-                  Tab(text: "Não Enviados (${unsentFiles.length})"),
-                ],
-              ),
+              if (_isSearching)
+                Container(
+                  height: 48,
+                  alignment: Alignment.center,
+                  child: Text(
+                    "Resultados da pesquisa: ${searchFilteredList.length}",
+                    style: TextStyle(color: Theme.of(context).colorScheme.onPrimary),
+                  ),
+                )
+              else
+                TabBar(
+                  controller: _tabController,
+                  tabs: [
+                    Tab(
+                      child: Text("Todos (${searchFilteredList.length})", overflow: TextOverflow.ellipsis),
+                    ),
+                    Tab(text: "Enviados (${sentFiles.length})"),
+                    Tab(text: "Não Enviados (${unsentFiles.length})"),
+                  ],
+                ),
+            ],
+          ),
+        ),
       ),
-      body: _isLoading
-          ? const Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [CircularProgressIndicator(), Text("Conectando ao servidor IMAP")],
-              ),
-            )
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildFileListView(geralFiles),
-                _buildFileListView(sentFiles),
-                _buildFileListView(unsentFiles),
-              ],
-            ),
-      floatingActionButton: _buildFloatintActionButton(),
+      body: _buildBody(nfProvider, searchFilteredList, sentFiles, unsentFiles),
+      floatingActionButton: _buildFloatingActionButton(),
+    );
+  }
+
+  Widget _buildBody(
+    NFProvider provider,
+    List<ConsolidatedNF> allFiles,
+    List<ConsolidatedNF> sentFiles,
+    List<ConsolidatedNF> unsentFiles,
+  ) {
+    if (provider.isLoading && provider.consolidatedList.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(provider.statusMessage),
+          ],
+        ),
+      );
+    }
+
+    // Se a busca estiver ativa, mostramos apenas a lista de resultados.
+    // Caso contrário, mostramos a TabBarView.
+    return _isSearching
+        ? _buildConsolidatedListView(provider, allFiles)
+        : TabBarView(
+            controller: _tabController,
+            children: [
+              _buildConsolidatedListView(provider, allFiles),
+              _buildConsolidatedListView(provider, sentFiles),
+              _buildConsolidatedListView(provider, unsentFiles),
+            ],
+          );
+  }
+
+  /// Constrói uma lista de documentos com base nos itens fornecidos.
+  Widget _buildConsolidatedListView(NFProvider provider, List<ConsolidatedNF> items) {
+    if (items.isEmpty) {
+      return Center(
+        child: Text(
+          _isSearching ? 'Nenhum resultado para a busca' : 'Nenhum item nesta categoria',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => provider.loadAndConsolidateData(),
+      child: ListView.builder(
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+          return NFListTile(nf: items[index]);
+        },
+      ),
     );
   }
 }
