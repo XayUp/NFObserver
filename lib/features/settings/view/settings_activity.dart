@@ -5,6 +5,16 @@ import 'package:nfobserver/utils/filter_parser.dart';
 import 'package:nfobserver/utils/theme_notifier.dart';
 import 'package:provider/provider.dart';
 
+enum FilterSortType {
+  dateAsc("Data de Criação (Mais antiga)"),
+  dateDesc("Data de Criação (Mais recente)"),
+  nameAz("Nome (A-Z)"),
+  nameZa("Nome (Z-A)");
+
+  const FilterSortType(this.displayName);
+  final String displayName;
+}
+
 class SettingsActivity extends StatelessWidget {
   const SettingsActivity({super.key});
 
@@ -98,6 +108,8 @@ class _SettingActivityState extends State<SettingActivityHome> {
                   OperationType? operationType;
                   FileType? fileType;
 
+                  FilterSortType _currentSortType = FilterSortType.dateAsc;
+
                   bool editFilter = false;
                   bool newFilter = false;
 
@@ -111,23 +123,57 @@ class _SettingActivityState extends State<SettingActivityHome> {
 
                   return StatefulBuilder(
                     builder: (BuildContext context, StateSetter stateSetter) {
+                      final List<List<String>> displayedFilters;
+                      if (_currentSortType == FilterSortType.nameAz) {
+                        displayedFilters = List.from(filters)
+                          ..sort((a, b) => a[0].toLowerCase().compareTo(b[0].toLowerCase()));
+                      } else {
+                        // A ordem de criação é o padrão
+                        displayedFilters = filters;
+                      }
+
                       return AlertDialog(
                         title: Text(editFilter ? "Editar Filtro" : "Edite ou adicione filtros"),
                         content: !editFilter
                             ? Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 8.0),
+                                        child: Text("Ordenar por:"),
+                                      ),
+                                      DropdownButton<FilterSortType>(
+                                        value: _currentSortType,
+                                        onChanged: (FilterSortType? newValue) {
+                                          if (newValue != null) {
+                                            stateSetter(() => _currentSortType = newValue);
+                                          }
+                                        },
+                                        items: FilterSortType.values.map((sortType) {
+                                          return DropdownMenuItem<FilterSortType>(
+                                            value: sortType,
+                                            child: Text(sortType.displayName),
+                                          );
+                                        }).toList(),
+                                      ),
+                                    ],
+                                  ),
+                                  const Divider(),
                                   SizedBox(
                                     width: 500,
                                     height: 200,
                                     child: ListView.builder(
-                                      itemCount: filters.length,
+                                      itemCount: displayedFilters.length,
                                       itemBuilder: (context, index) {
+                                        final currentFilter = displayedFilters[index];
                                         return ListTile(
-                                          title: Text(filters[index][0]),
-                                          subtitle: Text(filters[index][2]),
+                                          title: Text(currentFilter[0]),
+                                          subtitle: Text(currentFilter[2]),
                                           onTap: () => stateSetter(() {
-                                            filterToEdit = filters[index];
+                                            filterToEdit = currentFilter;
                                             editFilter = true;
                                             valorController.text = filterToEdit![2];
 

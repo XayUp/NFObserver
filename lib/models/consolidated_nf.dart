@@ -35,4 +35,19 @@ class ConsolidatedNF {
     required this.isSent,
     required this.processingStatus,
   }) : crossCheckStatus = (xmlData != null) ? CrossCheckStatus.complete : CrossCheckStatus.onlyDoc;
+
+  /// Cria uma cópia desta instância, mas com os campos fornecidos substituídos.
+  ConsolidatedNF copyWith({
+    NFDoc? docData,
+    NFXML? xmlData,
+    bool? isSent,
+    ProcessingStatus? processingStatus,
+  }) {
+    return ConsolidatedNF(
+      docData: docData ?? this.docData,
+      xmlData: xmlData ?? this.xmlData,
+      isSent: isSent ?? this.isSent,
+      processingStatus: processingStatus ?? this.processingStatus,
+    );
+  }
 }

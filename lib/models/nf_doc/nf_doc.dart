@@ -3,9 +3,10 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 class NFDoc {
-  final File file;
+  File file;
   String? name;
   String? path;
+  String? lastModification;
   String? date;
   String? supplierName;
 

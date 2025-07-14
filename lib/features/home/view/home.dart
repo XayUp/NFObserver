@@ -22,9 +22,9 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
 
   //Filtragem
   TabController? _tabController;
-
   //Animação do FloatingButton
   late AnimationController _fabAnimationController;
+  final GlobalKey _sortButtonKey = GlobalKey();
 
   @override
   void initState() {
@@ -62,6 +62,36 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
     }
   }
 
+  void _showSortMenu() {
+    // Fecha o menu de ações flutuantes primeiro, se estiver aberto.
+    _fabAnimationController.reverse();
+
+    final provider = context.read<NFProvider>();
+
+    // Encontra a posição do botão na tela para ancorar o menu.
+    final RenderBox button = _sortButtonKey.currentContext!.findRenderObject() as RenderBox;
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    // Exibe o menu.
+    showMenu<FilterSortType>(
+      context: context,
+      position: position,
+      items: FilterSortType.values.map((sortType) {
+        return PopupMenuItem<FilterSortType>(
+          value: sortType,
+          child: Text(sortType.displayName),
+        );
+      }).toList(),
+    ).then((selectedValue) => {if (selectedValue != null) provider.sortList(selectedValue)});
+  }
+
   Widget _buildFloatingActionButton() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -90,6 +120,17 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
               context.read<NFProvider>().loadAndConsolidateData();
             },
             child: const Icon(Icons.sync),
+          ),
+        ),
+        const SizedBox(height: 16),
+        ScaleTransition(
+          scale: _fabAnimationController,
+          child: FloatingActionButton.small(
+            key: _sortButtonKey,
+            heroTag: "sort_fab",
+            tooltip: 'Modo de organização',
+            onPressed: _showSortMenu,
+            child: const Icon(Icons.sort),
           ),
         ),
         const SizedBox(height: 16),
