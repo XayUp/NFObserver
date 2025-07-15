@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:nfobserver/features/home/services/mail_watcher_service.dart';
 import 'package:nfobserver/features/home/services/directory_watcher_service.dart';
 import 'package:nfobserver/features/settings/variables/global.dart';
 import 'package:nfobserver/features/settings/view/settings_activity.dart';
@@ -13,9 +14,9 @@ import 'package:nfobserver/utils/doc_name_parser.dart';
 import 'package:path/path.dart' as p;
 
 /// Implementação do listener para reagir a eventos do diretório de NFs.
-class _NFDirectoryEvents extends DirectoryWatcherEvents {
+class _NFDirectoryListener extends DirectoryWatcherListener {
   final NFProvider _provider;
-  _NFDirectoryEvents(this._provider);
+  _NFDirectoryListener(this._provider);
 
   @override
   void onCreated(FileSystemCreateEvent entity) {
@@ -36,13 +37,31 @@ class _NFDirectoryEvents extends DirectoryWatcherEvents {
 
   @override
   void onMoved(FileSystemMoveEvent event) {
-    _provider.handleFileChanged(event);
+    _provider.handleFileMove(event);
   }
 
   @override
   void onError(Object error) {
     debugPrint("Watcher Error: $error");
     _provider._updateStatus("Erro no monitoramento de diretório: $error");
+  }
+}
+
+/// Implementação do listener para reagir a eventos do vigia de e-mail.
+class _NfMailListener extends MailWatcherListener {
+  final NFProvider _provider;
+  _NfMailListener(this._provider);
+
+  @override
+  void onNewMailDetected() {
+    debugPrint("Listener de Email: Notificação recebida. Atualizando status de enviados...");
+    // Chama o método no provider para atualizar a lista de forma eficiente.
+    _provider.refreshSentStatus();
+  }
+
+  @override
+  void onMailWatcherError(Object error) {
+    _provider._updateStatus("Erro no Vigia de Email: $error");
   }
 }
 
@@ -61,7 +80,7 @@ class NFProvider with ChangeNotifier {
   List<ConsolidatedNF> get consolidatedList => _consolidatedList;
   FilterSortType get filterSortType => _filterSortType;
 
-  Future<void> handleFileChanged(FileSystemEvent event) async {
+  Future<void> handleFileMove(FileSystemEvent event) async {
     if (event is FileSystemMoveEvent) {
       final oldPath = event.path;
       final newPath = event.destination;
@@ -134,10 +153,7 @@ class NFProvider with ChangeNotifier {
   /// e o cruzamento de dados com os arquivos XML.
   Future<void> loadAndConsolidateData() async {
     if (_isLoading || _isEnriching) return; // Previne execuções múltiplas
-    DirectoryWatcherService.startWatching(
-      GlobalSettings.analyzeFilesPath,
-      _NFDirectoryEvents(this),
-    );
+    _startWatchers();
     try {
       _isLoading = true;
       _statusMessage = 'Lendo diretório de documentos...';
@@ -181,70 +197,118 @@ class NFProvider with ChangeNotifier {
       // Ordena a lista e notifica a UI para exibir a lista inicial imediatamente.
       sortList(_filterSortType);
       _isLoading = false; // O carregamento inicial terminou
-      _isEnriching = true; // O enriquecimento em segundo plano começa
-      _updateStatus('Verificando status dos documentos...');
+      _enrichData();
+    } catch (e) {
+      _statusMessage = "Erro ao carregar: ${e.toString().replaceFirst("Exception: ", '')}";
+      _isLoading = false;
+      _isEnriching = false; // Garante que a flag seja resetada em caso de erro
+      notifyListeners();
+    }
+  }
 
-      // --- PASSO 2: Enriquecimento de Dados em Segundo Plano ---
-      final sentAttachmentNames = await _mailService.fetchAllSentAttachmentNames();
-      final xmlMap = await _loadXmls();
+  /// Inicia o processo de enriquecimento de dados em etapas.
+  Future<void> _enrichData() async {
+    if (_isEnriching) return;
+    try {
+      _isEnriching = true;
 
-      // Itera pela lista existente e atualiza cada item com os dados enriquecidos.
+      // Etapa 1: Verificar status de envio.
+      await _enrichWithSentStatus();
+
+      // Etapa 2: Processar nomes e cruzar com XMLs.
+      await _enrichWithXmlAndNameParsing();
+
+      // Etapa Final: Marcar todos como completos e finalizar.
       for (int i = 0; i < _consolidatedList.length; i++) {
-        final currentNf = _consolidatedList[i];
-        final doc = currentNf.docData;
-
-        _updateStatus('Processando ${i + 1}/${_consolidatedList.length}: ${doc.name ?? ""}');
-
-        final docNameWithoutExtension = p.basenameWithoutExtension(doc.file.path);
-
-        // 1. Identify the file type to find the correct parsing rule.
-        final fileType = FileTypeIdentifier.getFileType(docNameWithoutExtension);
-
-        // 2. Get the list of possible formats for this file type.
-        final formatsForThisType = GlobalSettings.docNameFormats[fileType.name.toUpperCase()];
-
-        // 3. Try each format until one succeeds.
-        Map<String, String> parsedData = {};
-        if (formatsForThisType != null) {
-          for (final format in formatsForThisType) {
-            parsedData = DocNameParser.parse(docNameWithoutExtension, format);
-            if (parsedData.isNotEmpty) {
-              break; // Found a matching format, stop trying.
-            }
-          }
-        }
-
-        // Popula o objeto NFDoc com os dados extraídos do nome do arquivo.
-        doc.supplierName = parsedData['NOME_FORNECEDOR'];
-        doc.date = parsedData['DATA'];
-
-        // Usa o número da NF extraído como chave para o cruzamento.
-        // Se não encontrar, usa uma extração simples de números como fallback.
-        final nfNumberKey = parsedData['NUMERO_NF'] ?? docNameWithoutExtension.replaceAll(RegExp(r'[^0-9]'), '');
-        final matchingXml = xmlMap[nfNumberKey];
-        final isSent = sentAttachmentNames.contains(p.basename(doc.file.path).toLowerCase());
-
-        // Substitui o item na lista com uma nova instância contendo os dados completos.
-        _consolidatedList[i] = ConsolidatedNF(
-          docData: doc,
-          xmlData: matchingXml,
-          isSent: isSent,
-          processingStatus: ProcessingStatus.complete,
-        );
-
-        // Notifica a UI a cada item processado para uma atualização visual incremental.
-        notifyListeners();
-        // Uma pequena pausa para não sobrecarregar a thread da UI.
-        await Future.delayed(const Duration(milliseconds: 5));
+        _consolidatedList[i] = _consolidatedList[i].copyWith(processingStatus: ProcessingStatus.complete);
       }
 
       _updateStatus('Processo finalizado. ${_consolidatedList.length} documentos verificados.');
     } catch (e) {
-      _statusMessage = "Erro: ${e.toString().replaceFirst("Exception: ", '')}";
-    } finally {
-      _isLoading = false;
-      _isEnriching = false;
+      _statusMessage = "Erro durante o enriquecimento: ${e.toString().replaceFirst("Exception: ", '')}";
       notifyListeners();
+    } finally {
+      _isEnriching = false;
+      // A notificação final é feita para garantir que a UI remova o indicador de progresso.
+      notifyListeners();
+    }
+  }
+
+  /// Etapa do enriquecimento: Processa nomes dos arquivos e cruza com XMLs.
+  Future<void> _enrichWithXmlAndNameParsing() async {
+    _updateStatus("Analisando nomes de arquivos e cruzando com XMLs...");
+    final xmlMap = await _loadXmls();
+
+    for (int i = 0; i < _consolidatedList.length; i++) {
+      final currentNf = _consolidatedList[i];
+      final doc = currentNf.docData;
+
+      final docNameWithoutExtension = p.basenameWithoutExtension(doc.file.path);
+      final fileType = FileTypeIdentifier.getFileType(docNameWithoutExtension);
+      final formatsForThisType = GlobalSettings.docNameFormats[fileType.name.toUpperCase()];
+
+      Map<String, String> parsedData = {};
+      if (formatsForThisType != null) {
+        for (final format in formatsForThisType) {
+          parsedData = DocNameParser.parse(docNameWithoutExtension, format);
+          if (parsedData.isNotEmpty) break;
+        }
+      }
+
+      doc.supplierName = parsedData['NOME_FORNECEDOR'];
+      doc.date = parsedData['DATA'];
+
+      final nfNumberKey = parsedData['NUMERO_NF'] ?? docNameWithoutExtension.replaceAll(RegExp(r'[^0-9]'), '');
+      final matchingXml = xmlMap[nfNumberKey];
+
+      _consolidatedList[i] = currentNf.copyWith(docData: doc, xmlData: matchingXml);
+
+      // Notifica a UI após processar cada arquivo
+      notifyListeners();
+    }
+    _updateStatus("Nomes e XMLs processados. Atualizando lista...");
+  }
+
+  /// Etapa do enriquecimento: Verifica o status de envio dos documentos.
+  Future<void> _enrichWithSentStatus() async {
+    _updateStatus("Verificando status de envio dos documentos...");
+    final sentAttachmentNames = await _mailService.fetchAllSentAttachmentNames();
+
+    for (int i = 0; i < _consolidatedList.length; i++) {
+      final currentNf = _consolidatedList[i];
+      final isSent = sentAttachmentNames.contains(p.basename(currentNf.docData.file.path).toLowerCase());
+      _consolidatedList[i] = currentNf.copyWith(isSent: isSent);
+
+      // Notifica a UI após verificar o status de cada arquivo
+      notifyListeners();
+    }
+    _updateStatus("Status de envio verificado. Atualizando lista...");
+  }
+
+  /// Atualiza o status de 'enviado' de todos os documentos na lista.
+  /// É chamado pelo vigia de e-mail e é mais eficiente do que recarregar tudo.
+  Future<void> refreshSentStatus() async {
+    try {
+      _updateStatus("Vigia de Email: Verificando novos e-mails enviados...");
+      final sentAttachmentNames = await _mailService.fetchAllSentAttachmentNames();
+
+      bool hasChanges = false;
+      for (int i = 0; i < _consolidatedList.length; i++) {
+        final currentNf = _consolidatedList[i];
+        final newSentStatus = sentAttachmentNames.contains(p.basename(currentNf.docData.file.path).toLowerCase());
+
+        if (currentNf.isSent != newSentStatus) {
+          _consolidatedList[i] = currentNf.copyWith(isSent: newSentStatus);
+          hasChanges = true;
+        }
+      }
+
+      if (hasChanges) {
+        _updateStatus("Status de envio atualizado para um ou mais arquivos.");
+        notifyListeners();
+      }
+    } catch (e) {
+      _updateStatus("Erro ao atualizar status de envio: $e");
     }
   }
 
@@ -273,6 +337,17 @@ class NFProvider with ChangeNotifier {
   void _updateStatus(String message) {
     _statusMessage = message;
     notifyListeners();
+  }
+
+  void _startWatchers() {
+    DirectoryWatcherService.startWatching(
+      GlobalSettings.analyzeFilesPath,
+      _NFDirectoryListener(this),
+    );
+    MailWatcherService.startWatching(
+      _NfMailListener(this),
+    );
+    debugPrint("Vigias de diretório e email iniciados.");
   }
 
   /// Permite que o usário possa escolher a ordem de exibição dos documentos.

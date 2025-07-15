@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:nfobserver/features/app_routers.dart';
 import 'package:nfobserver/features/home/provider/nf_provider.dart';
+import 'package:nfobserver/features/home/widgets/status_footer.dart';
 import 'package:nfobserver/models/consolidated_nf.dart';
 import 'package:nfobserver/features/home/widgets/nf_list_tile.dart';
 import 'package:nfobserver/features/settings/view/settings_activity.dart';
@@ -315,7 +316,7 @@ class _HomeState extends State<Home> with TickerProviderStateMixin {
       child: ListView.builder(
         itemCount: items.length,
         itemBuilder: (context, index) {
-          return NFListTile(nf: items[index]);
+          return NFListTile(context: context, nf: items[index]);
         },
       ),
     );

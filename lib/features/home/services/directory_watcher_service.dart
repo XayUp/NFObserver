@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
-abstract class DirectoryWatcherEvents {
+abstract class DirectoryWatcherListener {
   /// Chamado quando um novo arquivo ou diretório é criado.
   void onCreated(FileSystemCreateEvent entity) {
     debugPrint('onCreated: ${entity.path}');
@@ -42,12 +42,12 @@ class DirectoryWatcherService {
   /// [path]: O caminho do diretório a ser monitorado.
   /// [listener]: A instância que irá receber as notificações de eventos.
 
-  static void startWatching(String path, DirectoryWatcherEvents events) {
+  static void startWatching(String path, DirectoryWatcherListener listener) {
     stopWatching(); // Para qualquer monitoramento anterior
 
     final directory = Directory(path);
     if (!directory.existsSync()) {
-      events.onError(Exception('Directory does not exist: $path'));
+      listener.onError(Exception('Directory does not exist: $path'));
       return;
     }
 
@@ -56,12 +56,12 @@ class DirectoryWatcherService {
     _subscription = directory.watch(recursive: true).listen(
       (event) {
         // Delega o evento para o método apropriado no listener
-        if (event is FileSystemCreateEvent) events.onCreated(event);
-        if (event is FileSystemModifyEvent) events.onModified(event);
-        if (event is FileSystemDeleteEvent) events.onDeleted(event);
-        if (event is FileSystemMoveEvent) events.onMoved(event);
+        if (event is FileSystemCreateEvent) listener.onCreated(event);
+        if (event is FileSystemModifyEvent) listener.onModified(event);
+        if (event is FileSystemDeleteEvent) listener.onDeleted(event);
+        if (event is FileSystemMoveEvent) listener.onMoved(event);
       },
-      onError: (e) => events.onError(e),
+      onError: (e) => listener.onError(e),
     );
     debugPrint('Started watching directory: $path');
   }
