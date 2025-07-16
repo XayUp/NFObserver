@@ -2,18 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:nfobserver/models/consolidated_nf.dart';
 import 'package:nfobserver/utils/file_type_identifier.dart';
 import 'package:nfobserver/utils/filter_parser.dart';
+import 'dart:math';
 
 class NFListTile extends StatelessWidget {
   final ValueNotifier<bool> _expanded = ValueNotifier<bool>(false);
   final ConsolidatedNF nf;
   final BuildContext context;
 
+  FileType _fileType = FileType.unknow;
+  FileType get fileType => _fileType;
+
   NFListTile({super.key, required this.context, required this.nf});
 
   /// Retorna um ícone e uma cor com base no tipo do documento.
   (IconData, Color) _getDocTypeVisuals(BuildContext context) {
-    final fileType = FileTypeIdentifier.getFileType(nf.docData.name ?? '');
-
+    _fileType = FileTypeIdentifier.getFileType(nf.docData.name ?? '');
     switch (fileType) {
       case FileType.fiscal_note:
         return (Icons.receipt_long, Colors.orange.shade700);
@@ -89,13 +92,34 @@ class NFListTile extends StatelessWidget {
           if (nf.docData.lastModification != null) _buildInfoRow('Número', nf.docData.lastModification!),
           if (nf.docData.path != null) _buildInfoRow('Caminho completo', nf.docData.path!),
           if (nf.docData.supplierName != null) _buildInfoRow('Fornecedor', nf.docData.supplierName!),
-          if (nf.xmlData != null) _buildTitleRow('Informações do XML'),
           //Informações do XML caso haja
+          if (nf.xmlData != null) _buildTitleRow('Informações do XML'),
           if (nf.xmlData?.nfNumber != null) _buildInfoRow('Número da nota:', "${nf.xmlData!.nfNumber}"),
+          if (nf.xmlData?.nfKey != null) _buildInfoRow("Chave da nota:", "${nf.xmlData!.nfKey}"),
+          if (nf.xmlData?.path != null) _buildInfoRow('Caminho completo:', nf.xmlData!.path),
           if (nf.xmlData?.issueData != null) _buildInfoRow('Data de emissão:', nf.xmlData!.issueData),
           if (nf.xmlData?.departureDate != null) _buildInfoRow('Data/ de saída:', nf.xmlData!.departureDate),
+
+          if (nf.xmlData?.paymentsDates != null) ...[
+            _buildTitleRow("Cobranças"),
+            _buildPaymentTable(nf.xmlData!.paymentsDates!),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _buildPaymentTable(List<Map<String, String>> payments) {
+    return GridView.builder(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: (payments.length / 3).ceil()),
+      itemCount: payments.length,
+      itemBuilder: (context, index) {
+        final payment = payments[index];
+        final keys = payment.keys;
+        final children = keys.map((key) => _buildInfoRow(key, payment[key]!)).toList();
+
+        return Column(mainAxisSize: MainAxisSize.min, children: children);
+      },
     );
   }
 
@@ -109,7 +133,7 @@ class NFListTile extends StatelessWidget {
             '$label ',
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
-          Expanded(child: Text(value)),
+          Expanded(child: SelectableText(value)),
         ],
       ),
     );
@@ -120,7 +144,11 @@ class NFListTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Text(
         label,
-        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Theme.of(context).colorScheme.primary),
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 16,
+          color: Theme.of(context).colorScheme.primary,
+        ),
       ),
     );
   }
@@ -135,14 +163,22 @@ class NFListTile extends StatelessWidget {
       children: [
         Icon(
           Icons.description, // Ou outro ícone que represente o status do XML
-          color: nf.crossCheckStatus == CrossCheckStatus.complete ? Colors.green.shade600 : Colors.red.shade600,
+          color: nf.crossCheckStatus == CrossCheckStatus.complete
+              ? Colors.green.shade600
+              : _fileType != FileType.fiscal_note
+              ? Theme.of(context).primaryColor
+              : Colors.red.shade600,
           size: iconSize,
           semanticLabel: nf.crossCheckStatus == CrossCheckStatus.complete ? 'XML Encontrado' : 'XML não encontrado',
         ),
         const SizedBox(width: horizontalPadding),
         Icon(
           Icons.outgoing_mail,
-          color: nf.isSent ? Colors.green.shade600 : Colors.red.shade600,
+          color: nf.isSent
+              ? Colors.green.shade600
+              : _fileType != FileType.fiscal_note
+              ? Theme.of(context).primaryColor
+              : Colors.red.shade600,
           size: iconSize,
           semanticLabel: nf.isSent ? 'Enviado' : 'Não enviado',
         ),

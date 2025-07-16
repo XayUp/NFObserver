@@ -71,7 +71,7 @@ class NFProvider with ChangeNotifier {
   bool _isEnriching = false;
   String _statusMessage = 'Aguardando para iniciar...';
   final List<ConsolidatedNF> _consolidatedList = [];
-  FilterSortType _filterSortType = FilterSortType.nameAz;
+  FilterSortType _filterSortType = FilterSortType.dateAsc;
 
   // Getters públicos para a UI
   bool get isLoading => _isLoading;
