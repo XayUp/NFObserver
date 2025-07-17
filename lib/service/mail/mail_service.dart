@@ -36,7 +36,7 @@ class MailService {
   ///
   /// Usa `BODYSTRUCTURE` para obter os nomes dos arquivos sem baixar seu conteúdo,
   /// tornando a operação extremamente rápida e eficiente em termos de dados.
-  /// Retorna um `Set` para buscas de alta performance.
+  /// Retorna um `Set`, com os nomes ou Lower Case, para buscas de alta performance.
   Future<Set<String>> fetchAllSentAttachmentNames() async {
     return await _withConnection((client) async {
       final allMailboxes = await client.listMailboxes(mailboxPatterns: ["*"], recursive: true);

@@ -71,6 +71,7 @@ class NFProvider with ChangeNotifier {
   bool _isEnriching = false;
   String _statusMessage = 'Aguardando para iniciar...';
   final List<ConsolidatedNF> _consolidatedList = [];
+  final List<NFXML> _unidentifiedXmls = [];
   FilterSortType _filterSortType = FilterSortType.dateAsc;
 
   // Getters públicos para a UI
@@ -78,6 +79,7 @@ class NFProvider with ChangeNotifier {
   bool get isEnriching => _isEnriching;
   String get statusMessage => _statusMessage;
   List<ConsolidatedNF> get consolidatedList => _consolidatedList;
+  List<NFXML> get unidentifiedXmls => _unidentifiedXmls;
   FilterSortType get filterSortType => _filterSortType;
 
   Future<void> handleFileMove(FileSystemEvent event) async {
@@ -100,43 +102,23 @@ class NFProvider with ChangeNotifier {
 
       debugPrint("Watcher: Atualizando arquivo renomeado: $oldPath -> $newPath");
 
+      final oldNFDoc = _consolidatedList[index].docData;
+
       try {
         // Cria um novo objeto NFDoc a partir do novo caminho.
         final newFile = File(newPath);
         final newDoc = NFDoc.fromFile(newFile);
         newDoc.lastModification = newFile.lastModifiedSync().toString();
 
-        // --- Re-enriquece os dados para este arquivo específico ---
-        final docNameWithoutExtension = p.basenameWithoutExtension(newDoc.file.path);
-
-        // 1. Extrai dados do novo nome do arquivo.
-        final fileType = FileTypeIdentifier.getFileType(docNameWithoutExtension);
-        final formatsForThisType = GlobalSettings.docNameFormats[fileType.name.toUpperCase()];
-        Map<String, String> parsedData = {};
-        if (formatsForThisType != null) {
-          for (final format in formatsForThisType) {
-            parsedData = DocNameParser.parse(docNameWithoutExtension, format);
-            if (parsedData.isNotEmpty) break;
-          }
-        }
-        newDoc.supplierName = parsedData['NOME_FORNECEDOR'];
-        newDoc.date = parsedData['DATA'];
-
-        /*
-        // 2. Re-verifica o status de envio e os dados do XML.
-        // Nota: Isso envolve I/O (rede e disco), mas garante a consistência.
-        final sentAttachmentNames = await _mailService.fetchAllSentAttachmentNames();
-        final isSent = sentAttachmentNames.contains(p.basename(newDoc.file.path).toLowerCase());
-        final nfNumberKey = parsedData['NUMERO_NF'] ?? docNameWithoutExtension.replaceAll(RegExp(r'[^0-9]'), '');
-        final xmlMap = await _loadXmls(); // Idealmente, isso viria de um cache.
-        final matchingXml = xmlMap[nfNumberKey];
-*/
-
         // Substitui o item antigo pelo novo.
         _consolidatedList[index] = ConsolidatedNF(
           docData: newDoc,
-          xmlData: _consolidatedList[index].xmlData, //Utiliza os dados anteriores
-          isSent: _consolidatedList[index].isSent, //Utiliza os dados anteriores
+          xmlData: oldNFDoc.name != newDoc.name
+              ? await _fetchDocumentXML(newDoc, true)
+              : _consolidatedList[index].xmlData, //Utiliza os dados anteriores
+          isSent: oldNFDoc.name != newDoc.name
+              ? await fetchDocumentSentStatus(newDoc)
+              : _consolidatedList[index].isSent, //Utiliza os dados anteriores
           processingStatus: ProcessingStatus.complete,
         );
 
@@ -189,9 +171,11 @@ class NFProvider with ChangeNotifier {
 
       // Popula a lista com os dados iniciais (apenas o documento)
       for (final file in files) {
-        final doc = NFDoc.fromFile(file);
-        doc.lastModification = file.lastModifiedSync().toString();
-        _consolidatedList.add(ConsolidatedNF(docData: doc, isSent: false, processingStatus: ProcessingStatus.pending));
+        final nfDoc = NFDoc.fromFile(file);
+        nfDoc.lastModification = file.lastModifiedSync().toString();
+        _consolidatedList.add(
+          ConsolidatedNF(docData: nfDoc, isSent: false, processingStatus: ProcessingStatus.pending),
+        );
       }
 
       // Ordena a lista e notifica a UI para exibir a lista inicial imediatamente.
@@ -237,38 +221,117 @@ class NFProvider with ChangeNotifier {
   /// Etapa do enriquecimento: Processa nomes dos arquivos e cruza com XMLs.
   Future<void> _enrichWithXmlAndNameParsing() async {
     _updateStatus("Analisando nomes de arquivos e cruzando com XMLs...");
-    final xmlMap = await _loadXmls();
 
-    for (int i = 0; i < _consolidatedList.length; i++) {
-      final currentNf = _consolidatedList[i];
-      final doc = currentNf.docData;
-
-      final docNameWithoutExtension = p.basenameWithoutExtension(doc.file.path);
-      final fileType = FileTypeIdentifier.getFileType(docNameWithoutExtension);
-      final formatsForThisType = GlobalSettings.docNameFormats[fileType.name.toUpperCase()];
-
-      Map<String, String> parsedData = {};
-      if (formatsForThisType != null) {
-        for (final format in formatsForThisType) {
-          parsedData = DocNameParser.parse(docNameWithoutExtension, format);
-          if (parsedData.isNotEmpty) break;
-        }
-      }
-
-      doc.supplierName = parsedData['NOME_FORNECEDOR'];
-      doc.date = parsedData['DATA'];
-
-      final nfNumberKey = parsedData['NUMERO_NF'] ?? docNameWithoutExtension.replaceAll(RegExp(r'[^0-9]'), '');
-      final matchingXml = xmlMap[nfNumberKey];
-
-      _consolidatedList[i] = currentNf.copyWith(docData: doc, xmlData: matchingXml);
-
-      // Notifica a UI após processar cada arquivo
-      notifyListeners();
-    }
+    await fetchAllDocumentsXML(true);
+    //notifyListeners();
     _updateStatus("Nomes e XMLs processados. Atualizando lista...");
   }
 
+  /// Carrega os XML no diretório definido nas configurações
+  /// O resultado é retorna mas também é guardado na variável [unindetifedXmls]
+  Future<List<NFXML>> _loadXmls() async {
+    _updateStatus("Lendo o diretório dos XMLs...");
+    _unidentifiedXmls.clear();
+    final directoryPath = GlobalSettings.xmlPath;
+    if (directoryPath.isEmpty) return _unidentifiedXmls;
+
+    final directory = Directory(directoryPath);
+    if (!await directory.exists()) return _unidentifiedXmls;
+
+    final files = directory.listSync().whereType<File>().where(
+      (file) => p.extension(file.path).toLowerCase() == '.xml',
+    );
+
+    for (final file in files) {
+      final nfXml = await NFXML.fromFile(file);
+      if (nfXml != null) {
+        _unidentifiedXmls.add(nfXml);
+        //_updateStatus("XML Indentificado: ${nfXml.nfKey}");
+      }
+    }
+    return _unidentifiedXmls;
+  }
+
+  Future<void> fetchAllDocumentsXML([bool force = false]) async {
+    final xmls = force ? await _loadXmls() : unidentifiedXmls;
+    if (xmls.isEmpty) return;
+
+    for (int cI = 0; cI < _consolidatedList.length; cI++) {
+      final nfDoc = consolidatedList[cI];
+      for (NFXML xml in xmls) {
+        if (_compareXmlWithDoc(nfDoc.docData, xml)) {
+          consolidatedList[cI] = nfDoc.copyWith(xmlData: xml);
+          xmls.remove(xml);
+          notifyListeners();
+          break;
+        }
+      }
+    }
+  }
+
+  /// Tente buscar o XML correspondente ao documento.
+  /// Este processo compara o nome do fornecedor e o número da nota obtidos pelo Parser
+  /// Caso as duas ocorrência existam, o XML é encontrado
+  /// A variável [force] faz com que a lista [unidentifiedXmls] seja recarregada, mesmo se não estiver vazia.
+  /// Retorna nulo caso nenhum XML corresponde ao documento
+  /// Caso contrário, o [NFXML] é retornado
+  Future<NFXML?> _fetchDocumentXML(NFDoc nfDoc, [bool force = false]) async {
+    final xmls = force ? await _loadXmls() : unidentifiedXmls;
+    if (xmls.isEmpty) return null;
+
+    for (NFXML xml in xmls) {
+      if (_compareXmlWithDoc(nfDoc, xml)) {
+        return xml;
+      }
+    }
+
+    return null;
+  }
+
+  ///Retorna [true] se nfDoc e nfXml se cruzam
+  bool _compareXmlWithDoc(NFDoc nfDoc, NFXML nfXml) {
+    final docNameWithoutExtension = p.basenameWithoutExtension(nfDoc.file.path);
+    final fileType = FileTypeIdentifier.getFileType(docNameWithoutExtension);
+    final formatsForThisType = GlobalSettings.docNameFormats[fileType.name.toUpperCase()];
+
+    Map<String, String> parsedData = {};
+    if (formatsForThisType != null) {
+      for (final format in formatsForThisType) {
+        parsedData = DocNameParser.parse(docNameWithoutExtension, format);
+        if (parsedData.isNotEmpty) break;
+      }
+    }
+
+    nfDoc.supplierName = parsedData['NOME_FORNECEDOR'];
+    final nfNumberKey = parsedData['NUMERO_NF'] ?? docNameWithoutExtension.replaceAll(RegExp(r'[^0-9]'), '');
+
+    debugPrint("Suplier: \"${nfDoc.supplierName}\" - NF: \"$nfNumberKey\"");
+    debugPrint("NFXML: Fant > ${nfXml.emitFant}, Name > ${nfXml.emitName}");
+
+    if (nfDoc.supplierName != null) {
+      List<String> suplierNameSplited = nfDoc.supplierName!.split(RegExp('\\s'));
+      debugPrint("Splited Suplier: $suplierNameSplited");
+      if (suplierNameSplited.isNotEmpty) {
+        return suplierNameSplited.firstWhere(
+          (part) {
+            debugPrint("Part: $part");
+            return (nfXml.emitName.contains(part) || nfXml.emitFant.contains(part)) &&
+                nfNumberKey == '${nfXml.nfNumber}';
+          },
+          orElse: () => '',
+        ).isNotEmpty;
+      }
+    }
+    return false;
+  }
+
+  Future<bool> fetchDocumentSentStatus(NFDoc nfDoc) async {
+    _updateStatus("Verificando status de envio do documento ${nfDoc.name}...");
+    final sentAttachmentNames = await _mailService.fetchAllSentAttachmentNames();
+    return sentAttachmentNames.contains(p.basename(nfDoc.file.path).toLowerCase());
+  }
+
+  //)
   /// Etapa do enriquecimento: Verifica o status de envio dos documentos.
   Future<void> _enrichWithSentStatus() async {
     _updateStatus("Verificando status de envio dos documentos...");
@@ -310,28 +373,6 @@ class NFProvider with ChangeNotifier {
     } catch (e) {
       _updateStatus("Erro ao atualizar status de envio: $e");
     }
-  }
-
-  Future<Map<String, NFXML>> _loadXmls() async {
-    _updateStatus("Lendo o diretório dos XMLs...");
-    final Map<String, NFXML> xmls = {};
-    final directoryPath = GlobalSettings.xmlPath;
-    if (directoryPath.isEmpty) return xmls;
-
-    final directory = Directory(directoryPath);
-    if (!await directory.exists()) return xmls;
-
-    final files = directory.listSync().whereType<File>().where(
-      (file) => p.extension(file.path).toLowerCase() == '.xml',
-    );
-
-    for (final file in files) {
-      final nfXml = await NFXML.fromFile(file);
-      if (nfXml != null) {
-        xmls[nfXml.nfNumber.toString()] = nfXml;
-      }
-    }
-    return xmls;
   }
 
   void _updateStatus(String message) {
