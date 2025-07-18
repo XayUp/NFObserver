@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:nfobserver/features/home/services/mail_watcher_service.dart';
 import 'package:nfobserver/features/home/services/directory_watcher_service.dart';
@@ -12,6 +10,71 @@ import 'package:nfobserver/service/mail/mail_service.dart';
 import 'package:nfobserver/utils/file_type_identifier.dart';
 import 'package:nfobserver/utils/doc_name_parser.dart';
 import 'package:path/path.dart' as p;
+import 'dart:io';
+import 'package:string_similarity/string_similarity.dart';
+
+/// Classe de argumentos para a função de verificação de similaridade no Isolate.
+/// Contém apenas os dados primitivos necessários para a comparação.
+class _SimilarityCheckArgs {
+  final String docSupplierName;
+  final String docNfNumber;
+  final String xmlEmitFant;
+  final String xmlEmitName;
+  final String xmlNfNumber;
+
+  _SimilarityCheckArgs({
+    required this.docSupplierName,
+    required this.docNfNumber,
+    required this.xmlEmitFant,
+    required this.xmlEmitName,
+    required this.xmlNfNumber,
+  });
+}
+
+/// Função de nível superior (top-level) para ser executada em um Isolate separado.
+/// Realiza a comparação de strings que consome muita CPU.
+bool _performSimilarityCheckIsolate(_SimilarityCheckArgs args) {
+  // A comparação do número da NF é rápida e pode ser feita primeiro.
+  if (args.docNfNumber != args.xmlNfNumber) {
+    return false;
+  }
+
+  final emitAndFant = [args.xmlEmitFant, args.xmlEmitName];
+  double bestSimilarity = 0.0;
+  const minSimilarity = 0.8;
+
+  for (String name in emitAndFant) {
+    final partesPrincipal = args.docSupplierName.toLowerCase().split(' ');
+    final partesAlvo = name.toLowerCase().split(' ');
+
+    int indexAtual = 0;
+    double somaSimilaridades = 0;
+    int palavrasCorrespondidas = 0;
+
+    for (final palavraBase in partesPrincipal) {
+      double melhorSim = 0;
+      int melhorIndex = -1;
+
+      for (int i = indexAtual; i < partesAlvo.length; i++) {
+        final palavraAlvo = partesAlvo[i];
+        final sim = StringSimilarity.compareTwoStrings(palavraBase, palavraAlvo);
+        if (sim > melhorSim && sim > 0.7) {
+          melhorSim = sim;
+          melhorIndex = i;
+        }
+      }
+      if (melhorIndex != -1) {
+        somaSimilaridades += melhorSim;
+        palavrasCorrespondidas++;
+        indexAtual = melhorIndex + 1; // garante ordem
+      }
+    }
+    final media = palavrasCorrespondidas > 0 ? somaSimilaridades / palavrasCorrespondidas : 0.0;
+    if (media > bestSimilarity) bestSimilarity = media;
+  }
+
+  return bestSimilarity > minSimilarity;
+}
 
 /// Implementação do listener para reagir a eventos do diretório de NFs.
 class _NFDirectoryListener extends DirectoryWatcherListener {
@@ -22,9 +85,7 @@ class _NFDirectoryListener extends DirectoryWatcherListener {
   void onCreated(FileSystemCreateEvent entity) {
     if (entity is File) {
       debugPrint("Watcher: Novo arquivo detectado - ${entity.path}");
-      // TODO: Implementar lógica para adicionar o novo arquivo à lista de forma eficiente,
-      // sem recarregar tudo.
-      _provider.loadAndConsolidateData(); // Solução simples por enquanto
+      // TODO: Implementar lógica para remover o arquivo da lista.
     }
   }
 
@@ -32,7 +93,6 @@ class _NFDirectoryListener extends DirectoryWatcherListener {
   void onDeleted(FileSystemDeleteEvent entity) {
     debugPrint("Watcher: Arquivo removido - ${entity.path}");
     // TODO: Implementar lógica para remover o arquivo da lista.
-    _provider.loadAndConsolidateData(); // Solução simples por enquanto
   }
 
   @override
@@ -72,7 +132,7 @@ class NFProvider with ChangeNotifier {
   String _statusMessage = 'Aguardando para iniciar...';
   final List<ConsolidatedNF> _consolidatedList = [];
   final List<NFXML> _unidentifiedXmls = [];
-  FilterSortType _filterSortType = FilterSortType.dateAsc;
+  FilterSortType _filterSortType = FilterSortType.dateDesc;
 
   // Getters públicos para a UI
   bool get isLoading => _isLoading;
@@ -204,6 +264,7 @@ class NFProvider with ChangeNotifier {
 
       // Etapa Final: Marcar todos como completos e finalizar.
       for (int i = 0; i < _consolidatedList.length; i++) {
+        if (_consolidatedList[i].xmlData == null) continue;
         _consolidatedList[i] = _consolidatedList[i].copyWith(processingStatus: ProcessingStatus.complete);
       }
 
@@ -220,10 +281,9 @@ class NFProvider with ChangeNotifier {
 
   /// Etapa do enriquecimento: Processa nomes dos arquivos e cruza com XMLs.
   Future<void> _enrichWithXmlAndNameParsing() async {
-    _updateStatus("Analisando nomes de arquivos e cruzando com XMLs...");
+    _updateStatus("Tentando analisando nomes de arquivos e cruzar com XMLs...");
 
     await fetchAllDocumentsXML(true);
-    //notifyListeners();
     _updateStatus("Nomes e XMLs processados. Atualizando lista...");
   }
 
@@ -252,20 +312,54 @@ class NFProvider with ChangeNotifier {
     return _unidentifiedXmls;
   }
 
-  Future<void> fetchAllDocumentsXML([bool force = false]) async {
-    final xmls = force ? await _loadXmls() : unidentifiedXmls;
-    if (xmls.isEmpty) return;
+  bool _fetchingDocumentsXML = false;
 
-    for (int cI = 0; cI < _consolidatedList.length; cI++) {
-      final nfDoc = consolidatedList[cI];
-      for (NFXML xml in xmls) {
-        if (_compareXmlWithDoc(nfDoc.docData, xml)) {
-          consolidatedList[cI] = nfDoc.copyWith(xmlData: xml);
-          xmls.remove(xml);
-          notifyListeners();
-          break;
+  /// Otimizado: Busca o XML correspondente para todos os documentos.
+  /// Este processo agora é muito mais eficiente, evitando laços aninhados.
+  Future<void> fetchAllDocumentsXML([bool force = false]) async {
+    if (_fetchingDocumentsXML) return;
+    _fetchingDocumentsXML = true;
+
+    try {
+      final allXmls = force || _unidentifiedXmls.isEmpty ? await _loadXmls() : _unidentifiedXmls;
+      if (allXmls.isEmpty) return;
+
+      _updateStatus("Indexando XMLs para cruzamento rápido...");
+
+      // Passo 1: Criar um Map de XMLs para busca rápida O(M)
+      final xmlMap = <String, List<NFXML>>{};
+      for (final xml in allXmls) {
+        final key = '${xml.nfNumber}';
+        (xmlMap[key] ??= []).add(xml);
+      }
+
+      _updateStatus("Analisando nomes de arquivos e cruzando com XMLs...");
+
+      // Passo 2: Iterar sobre os documentos UMA VEZ O(N)
+      for (int i = 0; i < _consolidatedList.length; i++) {
+        if (_consolidatedList[i].xmlData != null) continue; // Já encontrou, pular.
+
+        final nfDoc = _consolidatedList[i].docData;
+        final parsedInfo = _parseDocName(nfDoc);
+        nfDoc.supplierName = parsedInfo['NOME_FORNECEDOR']; // Atualiza o nome do fornecedor
+
+        final docNfNumber = parsedInfo['NUMERO_NF'];
+        if (docNfNumber == null) continue; // Não foi possível extrair o número da nota
+
+        // Busca O(1) no Map
+        final candidateXmls = xmlMap[docNfNumber];
+        if (candidateXmls != null) {
+          for (final xml in candidateXmls) {
+            if (await _compareXmlWithDoc(nfDoc, xml)) {
+              _consolidatedList[i] = _consolidatedList[i].copyWith(xmlData: xml);
+              break; // Encontrou o par, vai para o próximo documento
+            }
+          }
         }
       }
+    } finally {
+      _fetchingDocumentsXML = false;
+      notifyListeners(); // Notifica a UI uma única vez no final de todo o processo.
     }
   }
 
@@ -280,7 +374,8 @@ class NFProvider with ChangeNotifier {
     if (xmls.isEmpty) return null;
 
     for (NFXML xml in xmls) {
-      if (_compareXmlWithDoc(nfDoc, xml)) {
+      final similar = await _compareXmlWithDoc(nfDoc, xml);
+      if (similar) {
         return xml;
       }
     }
@@ -288,41 +383,45 @@ class NFProvider with ChangeNotifier {
     return null;
   }
 
-  ///Retorna [true] se nfDoc e nfXml se cruzam
-  bool _compareXmlWithDoc(NFDoc nfDoc, NFXML nfXml) {
+  /// Extrai informações do nome do arquivo do documento.
+  /// Retorna um Map com os dados parseados.
+  Map<String, String> _parseDocName(NFDoc nfDoc) {
     final docNameWithoutExtension = p.basenameWithoutExtension(nfDoc.file.path);
     final fileType = FileTypeIdentifier.getFileType(docNameWithoutExtension);
     final formatsForThisType = GlobalSettings.docNameFormats[fileType.name.toUpperCase()];
 
     Map<String, String> parsedData = {};
-    if (formatsForThisType != null) {
+    if (formatsForThisType != null && formatsForThisType.isNotEmpty) {
       for (final format in formatsForThisType) {
         parsedData = DocNameParser.parse(docNameWithoutExtension, format);
         if (parsedData.isNotEmpty) break;
       }
     }
 
-    nfDoc.supplierName = parsedData['NOME_FORNECEDOR'];
-    final nfNumberKey = parsedData['NUMERO_NF'] ?? docNameWithoutExtension.replaceAll(RegExp(r'[^0-9]'), '');
-
-    debugPrint("Suplier: \"${nfDoc.supplierName}\" - NF: \"$nfNumberKey\"");
-    debugPrint("NFXML: Fant > ${nfXml.emitFant}, Name > ${nfXml.emitName}");
-
-    if (nfDoc.supplierName != null) {
-      List<String> suplierNameSplited = nfDoc.supplierName!.split(RegExp('\\s'));
-      debugPrint("Splited Suplier: $suplierNameSplited");
-      if (suplierNameSplited.isNotEmpty) {
-        return suplierNameSplited.firstWhere(
-          (part) {
-            debugPrint("Part: $part");
-            return (nfXml.emitName.contains(part) || nfXml.emitFant.contains(part)) &&
-                nfNumberKey == '${nfXml.nfNumber}';
-          },
-          orElse: () => '',
-        ).isNotEmpty;
-      }
+    // Fallback para extrair o número da nota se o parser falhar.
+    if (parsedData['NUMERO_NF'] == null) {
+      parsedData['NUMERO_NF'] = docNameWithoutExtension.replaceAll(RegExp(r'[^0-9]'), '');
     }
-    return false;
+
+    return parsedData;
+  }
+
+  ///Retorna [true] se nfDoc e nfXml se cruzam, usando uma Isolate para a comparação pesada.
+  Future<bool> _compareXmlWithDoc(NFDoc nfDoc, NFXML nfXml) async {
+    // O nome do fornecedor já deve ter sido parseado e atribuído ao nfDoc.
+    if (nfDoc.supplierName == null || nfDoc.supplierName!.isEmpty) return false;
+
+    // Executa a comparação pesada em uma Isolate separada usando `compute`.
+    return await compute(
+      _performSimilarityCheckIsolate,
+      _SimilarityCheckArgs(
+        docSupplierName: nfDoc.supplierName!,
+        docNfNumber: _parseDocName(nfDoc)['NUMERO_NF'] ?? '',
+        xmlEmitFant: nfXml.emitFant,
+        xmlEmitName: nfXml.emitName,
+        xmlNfNumber: '${nfXml.nfNumber}',
+      ),
+    );
   }
 
   Future<bool> fetchDocumentSentStatus(NFDoc nfDoc) async {
@@ -336,21 +435,25 @@ class NFProvider with ChangeNotifier {
   Future<void> _enrichWithSentStatus() async {
     _updateStatus("Verificando status de envio dos documentos...");
     final sentAttachmentNames = await _mailService.fetchAllSentAttachmentNames();
-
+    bool hasChanges = false;
     for (int i = 0; i < _consolidatedList.length; i++) {
       final currentNf = _consolidatedList[i];
       final isSent = sentAttachmentNames.contains(p.basename(currentNf.docData.file.path).toLowerCase());
-      _consolidatedList[i] = currentNf.copyWith(isSent: isSent);
-
-      // Notifica a UI após verificar o status de cada arquivo
-      notifyListeners();
+      if (currentNf.isSent != isSent) {
+        _consolidatedList[i] = currentNf.copyWith(isSent: isSent);
+        hasChanges = true;
+      }
     }
+    // Notifica a UI apenas uma vez se houveram mudanças.
+    if (hasChanges) notifyListeners();
     _updateStatus("Status de envio verificado. Atualizando lista...");
   }
 
   /// Atualiza o status de 'enviado' de todos os documentos na lista.
   /// É chamado pelo vigia de e-mail e é mais eficiente do que recarregar tudo.
   Future<void> refreshSentStatus() async {
+    if (_isEnriching) return;
+
     try {
       _updateStatus("Vigia de Email: Verificando novos e-mails enviados...");
       final sentAttachmentNames = await _mailService.fetchAllSentAttachmentNames();

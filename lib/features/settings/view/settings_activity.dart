@@ -366,7 +366,7 @@ class _SettingActivityState extends State<SettingActivityHome> {
                 context: context,
                 builder: (context) {
                   return AlertDialog(
-                    title: const Text("Configurar Diretório"),
+                    title: const Text("Configurar Diretório das NFs"),
                     content: TextField(
                       decoration: const InputDecoration(hintText: "Digite o caminho do diretório"),
                       controller: _tmpTextController = TextEditingController(text: GlobalSettings.analyzeFilesPath),
@@ -395,7 +395,7 @@ class _SettingActivityState extends State<SettingActivityHome> {
                 context: context,
                 builder: (context) {
                   return AlertDialog(
-                    title: const Text("Configurar Diretório"),
+                    title: const Text("Configurar Diretório dos XMLs"),
                     content: TextField(
                       decoration: const InputDecoration(hintText: "Digite o caminho do diretório"),
                       controller: _tmpTextController = TextEditingController(text: GlobalSettings.xmlPath),

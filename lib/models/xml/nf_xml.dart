@@ -31,13 +31,15 @@ class NFXML {
 
       // Obtém o elemento que contém a chave da nota
       final infNFe = document.findAllElements('infNFe').first;
-      final idAttribute = infNFe.getAttributeNode('Id')?.value;
+      final idAttribute = infNFe.getAttributeNode('Id')?.innerText;
       String? nfKey;
 
+      debugPrint("Verificando a chave da nota");
       if (idAttribute != null) {
         nfKey = idAttribute.replaceAll('NFe', '');
       }
 
+      debugPrint("Verificando dados da nota");
       // A tag <ide> geralmente contém as informações de identificação da NF-e.
       final ideElement = document.findAllElements('ide').first;
 
@@ -55,34 +57,50 @@ class NFXML {
       final emitFant = emitElement.findElements('xFant').firstOrNull?.innerText ?? '';
 
       final cobrElement = infNFe.findAllElements('cobr').firstOrNull;
-      final fatElement = infNFe.findAllElements('fat').firstOrNull;
+      final fatElement = cobrElement?.findAllElements('fat').firstOrNull;
 
       final cobrList = cobrElement == null ? null : <Map<String, String>>[];
       if (cobrList != null) {
+        debugPrint("Verificando as faturas");
         if (fatElement != null) {
-          cobrList.add({
-            "Número da fatura: ": fatElement.getElement('nFat')!.value!,
-            "Valor original:": fatElement.getElement('vOrig')!.value!,
-            if (fatElement.getElement('vDesc') != null) "Valor do desconto: ": fatElement.getElement('vDesc')!.value!,
-            "Valor líquido: ": fatElement.getElement('vLiq')!.value!,
+          final nFat = fatElement.getElement('nFat')?.innerText;
+          final vOrig = fatElement.getElement('vOrig')?.innerText;
+          final vDesc = fatElement.getElement('vDesc')?.innerText;
+          final vLiq = fatElement.getElement('vLiq')?.innerText;
+          final map = {
+            if (nFat != null) "Fatura Nº: ": nFat,
+            if (vOrig != null) "Valor original: ": vOrig,
+            if (vDesc != null) "Valor com desconto: ": vDesc,
+            if (vLiq != null) "Valor líquido: ": vLiq,
+          };
+          if (map.isNotEmpty) cobrList.add(map);
+        }
+
+        debugPrint("Verificando as duplicatas");
+        final dupList = List.generate(
+          cobrElement!.children.length,
+          (index) {
+            final xmlElement = (cobrElement.children[index] as XmlElement);
+            if (xmlElement.localName == 'dup') {
+              final nDup = xmlElement.getElement('nDup')?.innerText;
+              final dVenc = xmlElement.getElement('dVenc')?.innerText;
+              final vDup = xmlElement.getElement('vDup')?.innerText;
+              return <String, String>{
+                if (nDup != null) "Parcela Nº: ": nDup,
+                if (dVenc != null) "Data de vencimento: ": dVenc,
+                if (vDup != null) "Valor da duplicata: ": vDup,
+              };
+            }
+          },
+        );
+        if (dupList.isNotEmpty) {
+          dupList.sort((a, b) {
+            if (a == null || b == null || !a.containsKey('Parcela') || !b.containsKey('Parcela')) return 0;
+            final int aParcela = int.tryParse(a['Parcela'] ?? '') ?? 0;
+            final int bParcela = int.tryParse(b['Parcela'] ?? '') ?? 0;
+            return aParcela.compareTo(bParcela);
           });
-          final dupList = List.generate(
-            cobrElement!.children.length,
-            (index) {
-              final xmlElement = (cobrElement.children[index] as XmlElement);
-              if (xmlElement.localName == 'dup') {
-                return <String, String>{
-                  "Parcela": xmlElement.getElement('nDup')!.value!,
-                  "Data": xmlElement.getElement('dVenc')!.value!,
-                  "Valor": xmlElement.getElement('vDup')!.value!,
-                };
-              }
-            },
-          );
-          if (dupList.isNotEmpty) {
-            dupList.sort((a, b) => int.tryParse(a!['Parcela']!)!.compareTo(int.tryParse(b!['Parcela']!)!));
-            cobrList.addAll(dupList.whereType());
-          }
+          cobrList.addAll(dupList.whereType<Map<String, String>>());
         }
       }
 

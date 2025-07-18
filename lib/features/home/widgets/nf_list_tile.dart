@@ -93,16 +93,18 @@ class NFListTile extends StatelessWidget {
           if (nf.docData.path != null) _buildInfoRow('Caminho completo', nf.docData.path!),
           if (nf.docData.supplierName != null) _buildInfoRow('Fornecedor', nf.docData.supplierName!),
           //Informações do XML caso haja
-          if (nf.xmlData != null) _buildTitleRow('Informações do XML'),
-          if (nf.xmlData?.nfNumber != null) _buildInfoRow('Número da nota:', "${nf.xmlData!.nfNumber}"),
-          if (nf.xmlData?.nfKey != null) _buildInfoRow("Chave da nota:", "${nf.xmlData!.nfKey}"),
-          if (nf.xmlData?.path != null) _buildInfoRow('Caminho completo:', nf.xmlData!.path),
-          if (nf.xmlData?.issueData != null) _buildInfoRow('Data de emissão:', nf.xmlData!.issueData),
-          if (nf.xmlData?.departureDate != null) _buildInfoRow('Data/ de saída:', nf.xmlData!.departureDate),
+          if (nf.xmlData != null) ...[
+            _buildTitleRow('Informações do XML'),
+            if (nf.xmlData?.nfNumber != null) _buildInfoRow('Número da nota:', "${nf.xmlData!.nfNumber}"),
+            if (nf.xmlData?.nfKey != null) _buildInfoRow("Chave da nota:", "${nf.xmlData!.nfKey}"),
+            if (nf.xmlData?.path != null) _buildInfoRow('Caminho completo:', nf.xmlData!.path),
+            if (nf.xmlData?.issueData != null) _buildInfoRow('Data de emissão:', nf.xmlData!.issueData),
+            if (nf.xmlData?.departureDate != null) _buildInfoRow('Data/ de saída:', nf.xmlData!.departureDate),
 
-          if (nf.xmlData?.paymentsDates != null) ...[
-            _buildTitleRow("Cobranças"),
-            _buildPaymentTable(nf.xmlData!.paymentsDates!),
+            if (nf.xmlData?.paymentsDates != null && nf.xmlData!.paymentsDates!.isNotEmpty) ...[
+              _buildTitleRow("Cobranças"),
+              _buildPaymentTable(nf.xmlData!.paymentsDates!),
+            ],
           ],
         ],
       ),
@@ -110,20 +112,28 @@ class NFListTile extends StatelessWidget {
   }
 
   Widget _buildPaymentTable(List<Map<String, String>> payments) {
-    return GridView.builder(
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: (payments.length / 3).ceil()),
-      itemCount: payments.length,
-      itemBuilder: (context, index) {
-        final payment = payments[index];
-        final keys = payment.keys;
-        final children = keys.map((key) => _buildInfoRow(key, payment[key]!)).toList();
-
-        return Column(mainAxisSize: MainAxisSize.min, children: children);
-      },
-    );
+    debugPrint(payments.toString());
+    final columns = <Widget>[];
+    for (Map<String, String> payment in payments) {
+      final keys = payment.keys;
+      final children = keys.map((key) => _buildInfoRow(key, payment[key]!, false)).toList();
+      columns.add(
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: children,
+            ),
+          ),
+        ),
+      );
+    }
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: columns);
   }
 
-  Widget _buildInfoRow(String label, String value) {
+  Widget _buildInfoRow(String label, String value, [expand = true]) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
@@ -133,7 +143,7 @@ class NFListTile extends StatelessWidget {
             '$label ',
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
-          Expanded(child: SelectableText(value)),
+          if (expand) Expanded(child: SelectableText(value)) else SelectableText(value),
         ],
       ),
     );
